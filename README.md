@@ -9,6 +9,7 @@ The dependencies are written in the [requirements.txt](requirements.txt) file, h
 3) SciPy
 4) PeakUtils
 5) Matplotlib
+
 *Note: it has been tested on Windows, and should be compatible on other OS’, however they have not been tested*
 
 ### Installing
