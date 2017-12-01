@@ -7,10 +7,27 @@ from scipy.io import savemat
 import mmap
 import contextlib
 
+
 class TintException(Exception):
     def __init___(self,message):
         Exception.__init__(self,"%s" % message)
         self.message = message
+
+
+def get_setfile_parameter(parameter, set_filename):
+    if not os.path.exists(set_filename):
+        return
+
+    with open(set_filename, 'r+') as f:
+        for line in f:
+            if parameter in line:
+                if line.split(' ')[0] == parameter:
+                    # prevents part of the parameter being in another parameter name
+                    new_line = line.strip().split(' ')
+                    if len(new_line) == 2:
+                        return new_line[-1]
+                    else:
+                        return ' '.join(new_line[1:])
 
 
 def getpos(pos_fpath, arena, method=''):

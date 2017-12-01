@@ -183,7 +183,11 @@ def get_setfile_parameter(parameter, set_filename):
             if parameter in line:
                 if line.split(' ')[0] == parameter:
                     # prevents part of the parameter being in another parameter name
-                    return line.split(' ')[-1]
+                    new_line = line.strip().split(' ')
+                    if len(new_line) == 2:
+                        return new_line[-1]
+                    else:
+                        return ' '.join(new_line[1:])
 
 
 def create_pos(pos_filename, pos_data):
