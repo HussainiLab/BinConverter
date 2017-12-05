@@ -1010,3 +1010,22 @@ def _plot(x, mph, mpd, threshold, edge, valley, ax, ind):
                      % (mode, str(mph), mpd, str(threshold), edge))
         # plt.grid()
         plt.show()
+
+
+def get_spike_color(cell_number):
+
+    """This method will match the cell number with the color it should be RGB in Tint.
+
+    These cells are numbered from 1-30 (there is technically a zeroth cell, but that isn't plotted"""
+    spike_colors = [(1, 8, 184), (93, 249, 75), (234, 8, 9),
+                         (229, 22, 239), (80, 205, 243), (27, 164, 0),
+                         (251, 188, 56), (27, 143, 167), (127, 41, 116),
+                         (191, 148, 23), (185, 9, 17), (231, 223, 67),
+                         (144, 132, 145), (34, 236, 228), (217, 20, 145),
+                         (172, 64, 80), (176, 106, 138), (199, 194, 167),
+                         (216, 204, 105), (160, 204, 61), (187, 81, 88),
+                         (45, 216, 122), (242, 136, 25), (50, 164, 161),
+                         (249, 67, 16), (252, 232, 147), (114, 156, 238),
+                         (241, 212, 179), (129, 62, 162), (235, 133, 126)]
+
+    return spike_colors[int(cell_number)-1]
