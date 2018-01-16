@@ -125,6 +125,8 @@ def getpos(pos_fpath, arena, method=''):
         if didFix:
             t = fixedPost
 
+        t = t - t[0]
+
         x, y = arena_config(x, y, arena, conversion=ppm, center=np.asarray([np.mean([min_x, max_x]),
                                                                             np.mean([min_y, max_y])]))
 

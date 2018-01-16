@@ -734,7 +734,7 @@ def ConvertSession(main_window, directory, parameters):
         if isinstance(converted, str):
             # ensures that the aborted session does not go into batchTint or get moved
             if 'Aborted' in converted:
-                pass
+                continue
                 # return
 
     if parameters['batchtint']:

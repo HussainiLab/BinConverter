@@ -146,7 +146,7 @@ def write_eeg(filepath, data, Fs):
 
         if egf:
             sample_rate = '\nsample_rate %d Hz' % (int(Fs))
-            data = struct.pack('>%dh' % (num_samples), *[np.int(data_value) for data_value in data.tolist()])
+            data = struct.pack('<%dh' % (num_samples), *[np.int(data_value) for data_value in data.tolist()])
             b_p_sample = '\nbytes_per_sample 2'
             num_EEG_samples = '\nnum_EGF_samples %d' % (num_samples)
 
