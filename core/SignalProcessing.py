@@ -2,18 +2,13 @@ from scipy import signal, fftpack
 import peakutils, datetime
 import matplotlib.pyplot as plt
 import numpy as np
-from pyfftw.interfaces import scipy_fftpack as fftw
-from scipy import fftpack
-
 # from numba import jit
 
 
 class Filtering:
-    def __init__(self):  # initializes the main window
-        pass
 
-    def iirfilt(self, bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=0, Rp=3, As=60, filttype='butter',
-                showresponse=0, output='data'):
+    def iirfilt(self, bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=1, Rp=3, As=60, filttype='butter',
+                showresponse=0):
         '''Designs butterworth filter:
         Data is the data that you want filtered
         Fs is the sampling frequency (in Hz)
@@ -44,11 +39,6 @@ class Filtering:
             Bessel/Thomson: ‘bessel’
 
         bandtype : {‘bandpass’, ‘lowpass’, ‘highpass’, ‘bandstop’}, optional
-
-
-        output:
-        'data' (default): this will returned the filtered data
-        'b-a': this will return the b and a values of the filter
         '''
 
         cutoff = Wp
@@ -93,12 +83,12 @@ class Filtering:
                 b, a = signal.iirdesign(wp=[Wp, Ws], ws=[Wp2, Ws2], gpass=Rp, gstop=As, analog=analog_val, ftype=filttype)
         else:
             if bandtype in ['low', 'high']:
-                if filttype in ['cheby1', 'cheby2', 'ellip']:
+                if filttype == 'cheby1' or 'cheby2' or 'ellip':
                     b, a = signal.iirfilter(order, Wp, rp=Rp, rs=As, btype=bandtype, analog=analog_val, ftype=filttype)
                 else:
                     b, a = signal.iirfilter(order, Wp, btype=bandtype, analog=analog_val, ftype=filttype)
             elif bandtype == 'band':
-                if filttype in ['cheby1', 'cheby2', 'ellip']:
+                if filttype == 'cheby1' or 'cheby2' or 'ellip':
                     b, a = signal.iirfilter(order, [Wp, Ws], rp=Rp, rs=As, btype=bandtype, analog=analog_val,
                                             ftype=filttype)
                 else:
@@ -110,7 +100,7 @@ class Filtering:
                 filtered_data = np.zeros((data.shape[0], data.shape[1]))
                 filtered_data = signal.filtfilt(b, a, data, axis=1)
                 #for channel_num in range(0, data.shape[0]):
-                #    # filtered_data[channel_num,:] = signal.lfilter(b, a, data[channel_num, :])
+                #    # filtered_data[channel_num,:] = signal.lfilter(b, a, data[channel_num,:])
                 #    filtered_data[channel_num, :] = signal.filtfilt(b, a, data[channel_num, :])
             else:
                 # filtered_data = signal.lfilter(b, a, data)
@@ -134,7 +124,7 @@ class Filtering:
                 mode = 'Digital'
 
             if not analog_val:
-                w, h = signal.freqz(b, a, worN=8000)  # returns the frequency response h, and the normalized angular
+                w, h = signal.freqz(b, a, worN=8000)  # returns the requency response h, and the normalized angular
                 # frequencies w in radians/sample
                 # w (radians/sample) * Fs (samples/sec) * (1 cycle/2pi*radians) = Hz
                 f = Fs * w / (2 * np.pi)  # Hz
@@ -145,7 +135,7 @@ class Filtering:
                 f = w / (2 * np.pi)  # Hz
 
             plt.figure(figsize=(10, 5))
-            # plt.subplot(211)
+            #plt.subplot(211)
             plt.semilogx(f, np.abs(h), 'b')
             plt.xscale('log')
 
@@ -153,12 +143,8 @@ class Filtering:
                 plt.title('%s Bandpass Filter Frequency Response (Order = %s, Wp=%s (Hz), Ws =%s (Hz))'
                           % (FType, order, cutoff, cutoff2))
             else:
-                if 'low' in bandtype:
-                    plt.title('%s Lowpass Filter Frequency Response (Order = %s, Wp=%s (Hz))'
-                              % (FType, order, cutoff))
-                else:
-                    plt.title('%s Highpass Filter Frequency Response (Order = %s, Wp=%s (Hz))'
-                              % (FType, order, cutoff))
+                plt.title('%s Lowpass Filter Frequency Response (Order = %s, Wp=%s (Hz))'
+                          % (FType, order, cutoff))
 
             plt.xlabel('Frequency(Hz)')
             plt.ylabel('Gain [V/V]')
@@ -169,13 +155,8 @@ class Filtering:
                 plt.axvline(cutoff2, color='green')
                 # plt.plot(cutoff, 0.5*np.sqrt(2), 'ko') # cutoff frequency
             plt.show()
-
-        if output == 'data':
-            if data != []:
-                return filtered_data
-
-        else:
-            return b, a
+        if data != []:
+            return filtered_data
 
     def notch_filt(self, data, Fs, band=10, freq=60, ripple=1, order=2, filter_type='butter', analog_filt=False, showresponse=0):
         '''# Required input defintions are as follows;
@@ -276,290 +257,46 @@ class Filtering:
                 filtered_data = signal.filtfilt(b, a, data)
 
         if showresponse == 1:  # set to 1 if you want to visualize the frequency response of the filter
-            if analog_val:
-                mode = 'Analog'
-            else:
-                mode = 'Digital'
-
-            if not analog_val:
-                w, h = signal.freqz(b, a, worN=8000)  # returns the requency response h, and the normalized angular
-                # frequencies w in radians/sample
-                # w (radians/sample) * Fs (samples/sec) * (1 cycle/2pi*radians) = Hz
-                f = fs * w / (2 * np.pi)  # Hz
-            else:
-                w, h = signal.freqs(b, a, worN=8000)  # returns the requency response h,
-                # and the angular frequencies w in radians/sec
-                # w (radians/sec) * (1 cycle/2pi*radians) = Hz
-                f = w / (2 * np.pi)  # Hz
-
-            fig = plt.figure(figsize=(10, 5))
-            ax = fig.add_subplot(111)
-            # plt.subplot(211)
-            # ax.plot(f, np.abs(h), 'b')
-            # ax.set_xlim([0,1])
-            ax.semilogx(f, np.abs(h), 'b')
-            ax.set_xscale('log')
-            # ax.set_xlim([-1000, ax.get_xlim()[1]])
-
-            plt.title("DC Block Filter")
-
-            ax.set_xlabel('Frequency(Hz)')
-            ax.set_ylabel('Gain [V/V]')
-            ax.margins(0, 0.1)
-            ax.grid(which='both', axis='both')
-            ax.axvline(fc, color='green')
-            plt.show()
+            self.PlotResponse(a, b, fc, fs, analog_val)
 
         if len(data) != 0:
             return filtered_data
 
-    def fir2(self, nn, ff, aa, output='b'):
+    def PlotResponse(self, a, b, fc, fs, analog_val):
 
-        """
-        Frequency sampling-based FIR filter design
-
-        Converted to Python from MATLAB by Geoffrey Barrett
-
-        Syntax:
-            b = fir2(n,f,m) returns an nth-order FIR filter with frequency-magnitude characteristics specified in the
-            vectors f and m. The function linearly interpolates the desired frequency response onto a dense grid and then
-            uses the inverse Fourier transform and a Hamming window to obtain the filter coefficients.
-
-        Example:
-            Design a 34th-order FIR highpass filter to attenuate the components of the signal below  ${\tt Fs}/4$.
-            Specify a cutoff frequency of 0.48. Visualize the frequency response of the filter.
-
-            f = [0 0.48 0.48 1];
-            mhi = [0 0 1 1];
-            bhi = fir2(34,f,mhi);
-
-        """
-
-        ff = np.asarray(ff)
-        aa = np.asarray(aa)
-
-        if len(ff.shape) != 2:
-            ff = ff.reshape((-1, 1))
-
-        if len(aa.shape) != 2:
-            aa = aa.reshape((-1, 1))
-
-        # work with the filter length instead of the filter order
-        nn += 1
-
-        if nn < 1024:
-            npt = 512
+        if analog_val:
+            mode = 'Analog'
         else:
-            npt = int(2 ** (np.ceil(np.log(nn) / np.log(2))))
+            mode = 'Digital'
 
-        wind = np.hamming(nn)
-        lap = np.fix(npt / 25)
-
-        if nn != len(wind):
-            raise Exception('Unequal Lengths')
-
-        mf, nf = ff.shape
-        ma, na = aa.shape
-
-        if ma != mf or na != nf:
-            raise Exception('Mismatched Dimensions')
-
-        nbrk = np.amax([mf, nf])
-
-        if mf < nf:
-            ff = ff.T
-            aa = aa.T
-
-        eps = np.spacing(1)
-        if np.abs(ff[0]) > eps or np.abs(ff[nbrk - 1] - 1) > eps:
-            raise Exception('InvalidRange')
-
-        ff[0] = 0
-        ff[nbrk - 1] = 1
-
-        # interpolate breakpoints onto large grid
-
-        H = np.zeros((1, npt))
-
-        nint = nbrk - 2
-        df = np.diff(ff.T).flatten().reshape((-1, 1))
-
-        if len(np.where(df < 0)[0]) > 0:
-            raise Exception('InvalidFreqVec')
-
-        if nn > 2 * npt:
-            raise Exception('InvalidNpt')
-
-        npt += 1
-
-        nb = 1
-        H[0] = aa[0]
-        for i in range(0, nint + 1):
-            if df[i] == 0:
-                nb = np.ceil(nb - lap / 2)
-                ne = nb + lap
-            else:
-                ne = np.fix(ff[i + 1] * npt)
-
-            if nb < 0 or ne > npt:
-                raise Exception('SignalErr')
-
-            j = np.arange(nb, ne + 1)
-
-            if nb == ne:
-                inc = 0
-            else:
-                inc = (j - nb) / (ne - nb)
-
-            if int(ne) <= H.shape[1]:
-                H[0, int(nb - 1):int(ne)] = inc * aa[i + 1] + (1 - inc) * aa[i]
-            else:
-                # in matlab it will extend the length automatically
-                missing = H.shape[1] - int(nb - 1)
-                values = (inc * aa[i + 1] + (1 - inc) * aa[i])
-
-                H[0, int(nb - 1):] = values[:len(values - missing) - 1]
-                H = np.hstack((H, values[len(values - missing) - 1:].reshape((1, -1))))
-
-            nb = ne + 1
-
-        dt = 0.5 * (nn - 1)
-
-        rad = np.zeros((1, npt), dtype=np.complex)
-        rad[:] = np.multiply(np.arange(npt), -dt * np.complex(0, 1) * np.pi) / (npt - 1)
-
-        H = np.multiply(H, np.exp(rad))
-
-        H = np.hstack((H, np.conj(H[0, npt - 2:0:-1]).reshape((1, -1))))
-
-        ht = np.real(fftw.ifft(H))
-
-        b = ht[0, :nn]  # raw numerator
-
-        b = np.multiply(b, wind.T)
-
-        a = 1
-
-        if output == 'b':
-            return b
-
-        return b, a
-
-    def fftbandpass(self, x, Fs, Fs1, Fp1, Fp2, Fs2, showresponse=False, output='data'):
-        """function XF = fftbandpass(X,FS,FS1,FP1,FP2,FS2)
-
-        Bandpass filter for the signal X (time x trials). An acuasal fft
-        algorithm is applied (i.e. no phase shift). The filter functions is
-        constructed from a Hamming window.
-
-        Fs : sampling frequency
-
-        The passbands (Fp1 Fp2) and stop bands (Fs1 Fs2) are defined as
-                        -----------
-                       /           \
-                      /             \
-                     /               \
-                    /                 \
-          ----------                   -----------------
-                  Fs1  Fp1       Fp2  Fs2
-
-        If no output arguments are assigned the filter function H(f) and
-        impulse response are plotted.
-
-        NOTE: for long data traces the filter is very slow.
-
-        ------------------------------------------------------------------------
-        Ole Jensen, Brain Resarch Unit, Low Temperature Laboratory,
-        Helsinki University of Technology, 02015 HUT, Finland,
-        Report bugs to ojensen@neuro.hut.fi
-        ------------------------------------------------------------------------
-
-           Copyright (C) 2000 by Ole Jensen
-           This program is free software; you can redistribute it and/or modify
-           it under the terms of the GNU General Public License as published by
-           the Free Software Foundation; either version 2 of the License, or
-           (at your option) any later version.
-
-           This program is distributed in the hope that it will be useful,
-           but WITHOUT ANY WARRANTY; without even the implied warranty of
-           MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-           GNU General Public License for more details.
-
-           You can find a copy of the GNU General Public License
-           along with this package (4DToolbox); if not, write to the Free Software
-           Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-
-        Converted by Geoffrey Barrett 11/13/2017
-        """
-
-        # make array into a column array
-        x = x.reshape((-1, 1))
-
-        # make x even
-        Norig = x.shape[0]
-        if Norig % 2 != 0:
-            x = np.vstack((x, np.zeros((x.shape[1], 1))))
-
-        # normalize frequencies
-        nyquist = Fs / 2
-        Ns1 = Fs1 / nyquist
-        Ns2 = Fs2 / nyquist
-        Np1 = Fp1 / nyquist
-        Np2 = Fp2 / nyquist
-
-        # construct the filter function H(f)
-        N = x.shape[0]
-        Nh = int(N / 2)
-
-        B = signal.firwin2(N, [0, Ns1, Np1, Np2, Ns2, 1], [0, 0, 1, 1, 0, 0])
-        # B = self.fir2(N - 1, [0, Ns1, Np1, Np2, Ns2, 1], [0, 0, 1, 1, 0, 0])
-
-        H = np.absolute(fftpack.fft(B))
-
-        IPR = np.real(fftpack.ifft(H))
-
-        if x.shape[1] > 1:
-            xf = np.zeros((len(H), x.shape[1]))
-            for k in np.arange(x.shape[1]):
-                xf[:, k] = np.real(fftpack.ifft(fftpack.fft(np.multiply(x[:, k], H.T))))
-
-            xf = xf[:Norig, :]
-
+        if not analog_val:
+            w, h = signal.freqz(b, a, worN=8000)  # returns the requency response h, and the normalized angular
+            # frequencies w in radians/sample
+            # w (radians/sample) * Fs (samples/sec) * (1 cycle/2pi*radians) = Hz
+            f = fs * w / (2 * np.pi)  # Hz
         else:
-            xf = np.real(
-                fftpack.ifft(
-                    np.multiply(fftpack.fft(x.T), H)
-                )
-            )
+            w, h = signal.freqs(b, a, worN=8000)  # returns the requency response h,
+            # and the angular frequencies w in radians/sec
+            # w (radians/sec) * (1 cycle/2pi*radians) = Hz
+            f = w / (2 * np.pi)  # Hz
 
-            xf = xf[:Norig + 1]
+        fig = plt.figure(figsize=(10, 5))
+        ax = fig.add_subplot(111)
+        # plt.subplot(211)
+        # ax.plot(f, np.abs(h), 'b')
+        # ax.set_xlim([0,1])
+        ax.semilogx(f, np.abs(h), 'b')
+        ax.set_xscale('log')
+        # ax.set_xlim([-1000, ax.get_xlim()[1]])
 
-        if showresponse:
-            fig = plt.figure()
-            ax1 = fig.add_subplot(211)
+        plt.title("DC Block Filter")
 
-            f = np.arange(Nh) * (Fs / N)
-
-            ax1.plot(f, H[:Nh])
-            ax1.set_xlim([0, 2 * Fs2])
-            ax1.set_ylim([0, 1.1])
-            ax1.set_title('Filter function H(f)')
-            ax1.set_xlabel('Frequency (Hz)')
-
-            ax2 = fig.add_subplot(212)
-            ax2.plot(np.arange(Nh) / Fs, IPR[:Nh])
-            ax2.set_xlim([0, 2 / Fp1])
-            ax2.set_xlabel('Time (sec)')
-            ax2.set_ylim([np.min(IPR), np.max(IPR)])
-            ax2.set_title('Impulse Response')
-
-        if output == 'data':
-            return xf.flatten()
-
-        else:
-            f = np.arange(Nh) * (Fs / N)
-
-            return f, H[:Nh]
+        ax.set_xlabel('Frequency(Hz)')
+        ax.set_ylabel('Gain [V/V]')
+        ax.margins(0, 0.1)
+        ax.grid(which='both', axis='both')
+        ax.axvline(fc, color='green')
+        plt.show()
 
 
 class Thresholding():

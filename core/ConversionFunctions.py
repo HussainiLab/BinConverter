@@ -655,11 +655,11 @@ def convert_basename(self, set_filename):
 
                 spike_time = spike_time * 96000  # multiply it by the timebase to get the frame count
 
+                spike_waveform = np.rint(spike_waveform)
+
                 if sum(np.sum(spike_waveform == 127, axis=1) >= 15) > 0:
                     # The spike is clipped
                     continue
-
-                spike_waveform = np.rint(spike_waveform)
 
                 tetrode_spikes[spike_time] = spike_waveform
 

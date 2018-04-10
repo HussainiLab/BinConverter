@@ -86,6 +86,10 @@ def getpos(pos_fpath, arena, method=''):
                     two_spot = False
                     print('The position format is unrecognized!')
 
+            elif 'sample_rate' in str(line):
+                sample_rate = float(line.decode(encoding='UTF-8').split(' ')[1])
+                headers += line.decode(encoding='UTF-8')
+
             else:
                 headers += line.decode(encoding='UTF-8')
 
@@ -111,7 +115,7 @@ def getpos(pos_fpath, arena, method=''):
         t = t.reshape((len(t), 1))
 
         if method == 'raw':
-            return x, y, t
+            return x, y, t, sample_rate
 
         t = np.divide(t, np.float(timebase))  # converting the frame number from Axona to the time value
 
@@ -136,7 +140,7 @@ def getpos(pos_fpath, arena, method=''):
     else:
         print("Haven't made any code for this part yet.")
 
-    return x.reshape((len(x), 1)), y.reshape((len(y), 1)), t.reshape((len(t), 1))
+    return x.reshape((len(x), 1)), y.reshape((len(y), 1)), t.reshape((len(t), 1)), sample_rate
 
 
 def find_tet(set_fullpath):
@@ -287,14 +291,18 @@ def ReadEEG(eeg_fname):
         is_eeg = False
         if 'eeg' in eeg_fname:
             is_eeg = True
-            Fs = 250
-        else:
-            Fs = 4.8e3
+            # Fs = 250
+        # else:
+        #    Fs = 4.8e3
 
         with contextlib.closing(mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)) as m:
             # find the data_start
             start_index = int(m.find(b'data_start') + len('data_start'))  # start of the data
             stop_index = int(m.find(b'\r\ndata_end'))  # end of the data
+
+            sample_rate_start = m.find(b'sample_rate')
+            sample_rate_end = m[sample_rate_start:].find(b'\r\n')
+            Fs = float(m[sample_rate_start:sample_rate_start + sample_rate_end].decode('utf-8').split(' ')[1])
 
             m = m[start_index:stop_index]
 
@@ -303,7 +311,7 @@ def ReadEEG(eeg_fname):
             else:
                 EEG = np.fromstring(m, dtype='<h')
 
-            return EEG, Fs
+            return EEG, int(Fs)
 
 
 def EEG_to_Mat(input_filename, output_filename):
@@ -549,10 +557,12 @@ def importspikes(filename):
             'ch3': np.asarray(waveform_data[2][:][:]), 'ch4': np.asarray(waveform_data[3][:][:])}, spikeparam
 
 
-def AUP(waveform, plot_on=False):
+def AUP(waveform, t_peak, plot_on=False):
     total_time = 1  # ms
 
     t = np.linspace(1 / (len(waveform)), total_time, len(waveform))
+
+    t_peak = t[t_peak-1]
 
     dy_dt = np.diff(waveform) / max(np.diff(waveform))  # approximating 1st derivative and normalizing
 
@@ -561,7 +571,7 @@ def AUP(waveform, plot_on=False):
     # create boolean array where the 1st derivative is between +/-10% of max
     # and t >= 200 microseconds since that is when the spike occurs
 
-    bool_vel = ((dy_dt <= 0.1) * (dy_dt >= -0.1)) * (t[:-1] <= 0.2)  #
+    bool_vel = ((dy_dt <= 0.1) * (dy_dt >= -0.1)) * (t[:-1] <= t_peak)  #
 
     # find the first set of consecutive values between +/-10% to determine baseline
     if sum(bool_vel) == 0:
