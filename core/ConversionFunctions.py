@@ -550,14 +550,13 @@ def convert_basename(self, set_filename):
             valid_spikes = np.array([])
             #valid_spikes = []
 
-            # print(spike_time, session_parameters['duration'])
-            # pre_spike_samples = int(session_parameters['SamplesPerSpike'] * 0.2)
-            pre_spike_samples = int(Fs * (200 / 1e6)) + 1
-            # post_spike_samples = int(session_parameters['SamplesPerSpike'] * 0.8) + 1
-            post_spike_samples = int(Fs * (800 / 1e6)) + 2
+            pre_spike_samples = int(get_setfile_parameter('pretrigSamps', set_filename))
+            post_spike_samples = int(get_setfile_parameter('spikeLockout', set_filename))
 
-            min_spike_time_diff = int(
-                np.rint(Fs * (200 / 1e6)))  # min samples allowed between spikes (+/- 100 micro-seconds)
+            # session_parameters['pretrigSamps'] = pre_spike_samples
+            # session_parameters['spikeLockout'] = post_spike_samples
+
+            # min_spike_time_diff = int(np.rint(Fs * (200 / 1e6)))
 
             for channel_index, channel in enumerate(tetrode_channels):
                 k += 1
@@ -566,11 +565,11 @@ def convert_basename(self, set_filename):
                     (str(datetime.datetime.now().date()),
                      str(datetime.datetime.now().time())[:8], tetrode, k))
 
-                channel_num = channel - 1  # channel number in the 0-> 63 range
+                # channel_num = channel - 1  # channel number in the 0-> 63 range
 
-                channel_max = np.amax(data[channel_index, :])
-                channel_min = np.amin(data[channel_index, :])
-                t_waveform = np.linspace(-200 / 1e6, 800 / 1e6, num=50)  # getting the 50 samples per spike
+                #  = np.amax(data[channel_index, :])
+                # channel_min = np.amin(data[channel_index, :])
+                # t_waveform = np.linspace(-200 / 1e6, 800 / 1e6, num=50)  # getting the 50 samples per spike
 
                 '''Auto thresholding technique incorporated by:
                 Quian Quiroga in 2014 - Unsupervised Spike Detection and Sorting with Wavelets and
@@ -591,7 +590,7 @@ def convert_basename(self, set_filename):
 
                 # removing spike indices that will not allow for us to have 200us pre and 800 us post-spike
                 spike_indices = np.asarray([spike for spike in spike_indices
-                                            if spike - pre_spike_samples >= 0 and
+                                            if spike - pre_spike_samples + 1 >= 0 and
                                             spike + post_spike_samples <= len(data[channel_index, :])])
 
                 self.LogAppend.myGUI_signal.emit(
@@ -640,16 +639,17 @@ def convert_basename(self, set_filename):
                         continue
                 else:
                     # calculate spike_refractory to ensure that no spikes get added within this range
-                    spike_refractory = list(np.arange(spike, spike + min_spike_time_diff + 1))
+                    # this statement will only occur for the first spike since we set the init spike as validspikes[0]
+                    spike_refractory = list(np.arange(spike + 1, spike + post_spike_samples + 1))
 
                 spike_time = t[int(spike)]
 
                 # waveform_indices = np.where((t>=spike_time-250/1e6) & (t<=spike_time+850/1e6))[0]  # too slow
-                waveform_indices = np.arange(spike - pre_spike_samples, spike + post_spike_samples).astype(int)
+                waveform_indices = np.arange(spike - pre_spike_samples + 1, spike + post_spike_samples + 1).astype(int)
 
-                spike_t = t[waveform_indices] - spike_time  # making the times from -200 us to 800 us
+                # spike_t = t[waveform_indices] - spike_time  # making the times from -200 us to 800 us
 
-                spike_waveform = np.zeros((len(tetrode_channels), 50))
+                # spike_waveform = np.zeros((len(tetrode_channels), 50))
 
                 spike_waveform = data[:, waveform_indices]
 
@@ -657,14 +657,22 @@ def convert_basename(self, set_filename):
 
                 spike_waveform = np.rint(spike_waveform)
 
-                if sum(np.sum(spike_waveform == 127, axis=1) >= 15) > 0:
-                    # The spike is clipped
+                # artifact rejection
+
+                # check if the last two thirds of the data has values well above baseline
+                if sum(spike_waveform[:, -20:].flatten() >= 43) > 0:
+                    # this is 33% above baseline (0)
+                    continue
+
+                # check if the first sample is well above or well below baseline
+                elif sum(np.abs(spike_waveform[:, 0].flatten()) >= 100) > 0:
+                    # the first sample is >100 or <-100
                     continue
 
                 tetrode_spikes[spike_time] = spike_waveform
 
                 latest_spike = spike
-                spike_refractory = list(np.arange(spike, spike + min_spike_time_diff + 1))
+                spike_refractory = list(np.arange(spike + 1, spike + post_spike_samples + 1))
 
             # write the tetrode data to create the .N file
             self.LogAppend.myGUI_signal.emit(
@@ -745,7 +753,7 @@ def convert_basename(self, set_filename):
                 missing_samples = np.tile(np.array([0]), (1, missing_samples))
                 EEG = np.hstack((EEG, missing_samples))
             '''
-            create_eeg(eeg_filename, EEG, Fs)
+            create_eeg(eeg_filename, EEG, Fs, DC_Blocker=self.dc_blocker.isChecked())
             # EEG = None
 
         if os.path.exists(egf_filename):
@@ -757,7 +765,7 @@ def convert_basename(self, set_filename):
 
             if len(EEG) != 0:
                 # then the EEG has already been loaded in
-                create_egf(egf_filename, EEG, Fs)
+                create_egf(egf_filename, EEG, Fs, DC_Blocker=self.dc_blocker.isChecked())
                 EEG = None
             else:
                 # then the EEG hasn't been read in (EEG was already created), read the data
@@ -772,7 +780,7 @@ def convert_basename(self, set_filename):
                     EGF = np.hstack((EGF, missing_samples))
                 '''
 
-                create_egf(egf_filename, EGF, Fs)
+                create_egf(egf_filename, EGF, Fs, DC_Blocker=self.dc_blocker.isChecked())
                 EGF = None
 
             # session_parameters['SamplesPerSpike'] = 50
@@ -1284,7 +1292,7 @@ def remove_appended_zeros(data):
 
 
 def create_eeg(filename, data, Fs, DC_Blocker=True):
-    # data is given in int16, and already has been notch filtered
+    # data is given in int16
 
     if os.path.exists(filename):
         return
@@ -1292,17 +1300,13 @@ def create_eeg(filename, data, Fs, DC_Blocker=True):
     Fs_EEG = 250  # sampling rate of .EEG files
     Fs_EGF = 4.8e3  # sampling rate of .EGF files
 
-    # duration = data.shape[1] / Fs
-
-    # zero_threshold = duration + 1/Fs  # after this timepoint all values should be zero
-    # t = np.arange(data.shape[1])/Fs
+    duration = data.shape[1] / Fs
 
     if DC_Blocker:
         data = sp.Filtering().dcblock(data, 0.1, Fs)
-        # data = sp.Filtering().iirfilt(bandtype='high', data=data, Fs=Fs, Wp=0.1, order=3, filttype='butter',)
 
-    # LP at 600
-    data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs, Wp=600, order=6,
+    # LP at 500
+    data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
                                   automatic=0, Rp=0.1, As=60, filttype='cheby1', showresponse=0)
 
     # notch filter the data
@@ -1312,47 +1316,41 @@ def create_eeg(filename, data, Fs, DC_Blocker=True):
 
     data = data[:, 0::int(Fs / Fs_EGF)]
 
-    # append zeros to make the duration a round number
-    duration_round = np.ceil(data.shape[1] / Fs_EGF)  # the duration should be rounded up to the nearest integer
-    missing_samples = int(duration_round * Fs_EGF - data.shape[1])
-    if missing_samples != 0:
-        missing_samples = np.tile(np.array([0]), (1, missing_samples))
-        data = np.hstack((data, missing_samples))
-
-    # get the indices of the zeros to discount them from any processing
-    zero_ind = remove_appended_zeros(data)
-    if len(zero_ind) != 0:
-        indices = np.setdiff1d(np.arange(data.shape[1]), zero_ind)
-    else:
-        indices = np.arange(data.shape[1])
+    data = sp.Filtering().notch_filt(data, Fs_EGF, freq=60, band=10, order=3)
 
     t = np.arange(data.shape[1]) / Fs_EGF
-    # t = t[0::int(Fs / Fs_EGF)]
 
     # now apply lowpass at 125 hz to prevent aliasing of EEG
-    data[:, indices] = sp.Filtering().iirfilt(bandtype='low', data=data[:, indices], Fs=Fs_EGF, Wp=Fs_EEG / 2, order=6,
+    data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs_EGF, Wp=Fs_EEG / 2, order=6,
                                   Rp=0.1, filttype='cheby1', showresponse=0)
 
     # f = interpolate.interp1d(data[:, indices].flatten(), t[indices], kind='nearest')
     f = interpolate.interp1d(t, data.flatten(), kind='nearest')
 
-    # down sample to 250 Hz EEG signal, 250 doesn't go evenly into 4.8k, so we will interpolate
-    # data = data[:, 0::int(Fs_EGF / Fs_EEG)]
-    num_eeg = int(duration_round * Fs_EEG)
-    t_eeg = np.arange(num_eeg)/Fs_EEG
-    # t_eeg = np.linspace(t[0], t[-1], num_eeg)
+
+    num_eeg = int(np.floor(duration) * Fs_EEG)
+
+    t_eeg = np.arange(num_eeg) / Fs_EEG
+
+    # notch filter the data
+    # data = sp.Filtering().notch_filt(data, Fs_EEG, freq=60, band=10, order=3)
 
     data = f(t_eeg)
 
-    # notch filter the data
-    data = sp.Filtering().notch_filt(data, Fs_EEG, freq=60, band=10, order=3)
+    # append zeros to make the duration a round number
+    duration_round = np.ceil(duration)  # the duration should be rounded up to the nearest integer
+    missing_samples = int(duration_round * Fs_EEG - len(data))
 
-    # ensuring the appropriate range of the values
+    print('missing samples', missing_samples)
+    if missing_samples != 0:
+        missing_samples_array = np.tile(np.array([0]), (1, missing_samples))
+        data = np.hstack((data.reshape((1, -1)), missing_samples_array))
+
+        # ensuring the appropriate range of the values
     data[np.where(data > 32767)] = 32767
     data[np.where(data < -32768)] = -32768
 
     data = int16toint8(data)  # converting from 16 bits to 8 bits,
-
     ##################################################################################################
     # ---------------------------Writing the EEG Data-------------------------------------------
     ##################################################################################################
@@ -1369,7 +1367,7 @@ def create_egf(filename, data, Fs, DC_Blocker=True):
     if DC_Blocker:
         data = sp.Filtering().dcblock(data, 0.1, Fs)
 
-    # LP at 600
+    # LP at 500
     data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
                                   automatic=0, Rp=0.1, filttype='cheby1', showresponse=0)
 
@@ -1389,6 +1387,9 @@ def create_egf(filename, data, Fs, DC_Blocker=True):
     if missing_samples != 0:
         missing_samples = np.tile(np.array([0]), (1, missing_samples))
         data = np.hstack((data, missing_samples))
+
+    # ensure the full last second of data is equal to zero
+    data[0, -int(Fs_EGF):] = 0
 
     data = np.rint(data)  # convert the data to integers
 
@@ -1417,6 +1418,7 @@ def overwrite_setfile(set_filename):
 
             if header_values:
                 if 'duration' in line:
+                    line = line.strip()
                     duration = int(np.ceil(float(line.split(' ')[-1])))
                     header += 'duration %d\n' % duration
                     continue

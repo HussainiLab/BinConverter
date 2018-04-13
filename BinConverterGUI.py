@@ -216,16 +216,30 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         self.threshold.setText('3')
         self.threshold.setToolTip("This will determine the standard deviations away from the baseline value " +
                                   "that you want to use for the thresholding")
+
+        # check if you want to perform a DC block on the EEG and EGF data
+        self.dc_blocker = QtGui.QCheckBox("DC Blocking Filter")
+        self.dc_blocker.toggle() # set the default to on
+
         threshold_layout = QtGui.QHBoxLayout()
         for widget in [threshold_label, self.threshold]:
             threshold_layout.addWidget(widget)
+
+        # extra parameters layout
+
+        parameters_layout = QtGui.QHBoxLayout()
+        for parameter in [threshold_layout, self.dc_blocker]:
+            if 'Layout' in parameter.__str__():
+                parameters_layout.addLayout(parameter)
+            else:
+                parameters_layout.addWidget(parameter)
 
         # ------------- layout ------------------------------
 
         layout = QtGui.QVBoxLayout()
 
         layout_order = [directory_layout, batch_settings_layout, recording_queue_layout, log_layout,
-                        threshold_layout, btn_layout]
+                        parameters_layout, btn_layout]
 
         for order in layout_order:
             if 'Layout' in order.__str__():
