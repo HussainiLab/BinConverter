@@ -3,7 +3,7 @@ import peakutils
 
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy import interpolate
-import core.SignalProcessing as sp
+import core.filtering as filt
 
 from BatchTint.KlustaFunctions import *
 from core.Tint_Matlab import *
@@ -14,10 +14,13 @@ import numpy.distutils.system_info as sysinfo
 
 def int16toint8(value):
     """Converts int16 data to int8"""
-    value = np.rint(np.divide(value, 256))
+    value = np.divide(value, 256)
+    pos_bool = np.where(value >= 0)
+    neg_bool = np.where(value < 0)
 
-    value[np.where(value > 127)] = 127
-    value[np.where(value < -128)] = -128
+    value[pos_bool] = np.floor(value[pos_bool])
+    value[neg_bool] = np.ceil(value[neg_bool])
+
     return value
 
 
@@ -391,9 +394,7 @@ def convert_basename(self, set_filename):
         (str(datetime.datetime.now().date()),
          str(datetime.datetime.now().time())[:8], set_filename))
 
-    ##################################################################################################
     # -----------------------------------Overwrite the Set File ---------------------------------------
-    ##################################################################################################
 
     self.LogAppend.myGUI_signal.emit(
         '[%s %s]: Overwriting the following set file\'s duration: %s!' %
@@ -407,10 +408,7 @@ def convert_basename(self, set_filename):
         (str(datetime.datetime.now().date()),
          str(datetime.datetime.now().time())[:8], tint_basename))
 
-
-    ##################################################################################################
     # --------------------------------------Read Position Data----------------------------------------
-    ##################################################################################################
 
     position_filename = os.path.join(directory, tint_basename + '.pos')
 
@@ -420,7 +418,7 @@ def convert_basename(self, set_filename):
             (str(datetime.datetime.now().date()),
              str(datetime.datetime.now().time())[:8], position_filename))
 
-        Fs_pos = 50  # Hz, position sampling frequency
+        # Fs_pos = 50  # Hz, position sampling frequency
 
         self.LogAppend.myGUI_signal.emit(
             '[%s %s]: Reading in the position data!' %
@@ -428,11 +426,6 @@ def convert_basename(self, set_filename):
              str(datetime.datetime.now().time())[:8]))
 
         raw_position = get_raw_pos(bin_filename)  # vid time, x1, y1, x2, y2, numpix1, numpix2, total_pix, unused
-
-        # the video time is irrelevant so lets replace it with our own time
-        # post = np.arange(raw_position.shape[0]) / Fs_pos
-
-        # raw_position[:, 0] = np.arange(raw_position.shape[0]) # commented this out since the other conversion leaves the video time
 
         self.LogAppend.myGUI_signal.emit(
             '[%s %s]: Creating the .pos file!' %
@@ -447,9 +440,7 @@ def convert_basename(self, set_filename):
             (str(datetime.datetime.now().date()),
              str(datetime.datetime.now().time())[:8], position_filename))
 
-    ##################################################################################################
     # --------------------------------------Read Tetrode Data----------------------------------------
-    ##################################################################################################
 
     self.LogAppend.myGUI_signal.emit(
         '[%s %s]: Converting the session one tetrode at a time!' %
@@ -461,6 +452,14 @@ def convert_basename(self, set_filename):
     active_tetrodes = get_active_tetrode(set_filename)
 
     # converts the data one tetrode at a time so we can eliminate memory errors
+
+    pre_spike_samples = int(get_setfile_parameter('pretrigSamps', set_filename))
+    post_spike_samples = int(get_setfile_parameter('spikeLockout', set_filename))
+    rejstart = int(get_setfile_parameter('rejstart', set_filename))
+    rejthreshtail = int(get_setfile_parameter('rejthreshtail', set_filename))
+    rejthreshupper = int(get_setfile_parameter('rejthreshupper', set_filename))
+    rejthreshlower = int(get_setfile_parameter('rejthreshlower', set_filename))
+
     for tetrode in active_tetrodes:
 
         tetrode = int(tetrode)
@@ -485,57 +484,30 @@ def convert_basename(self, set_filename):
 
         # converting data to uV
 
-        # uV_scalar16 = getScalar(tetrode_channels, set_filename, mode='16bit')  # the data is 16 bit in raw mode
-        # make it a column matrix then tile for each data sample
-        # uV_scalar16 = np.tile(uV_scalar16.reshape((len(uV_scalar16), 1)), data.shape[1])
-
-        # data = np.multiply(data, uV_scalar16)  # uV
-
         n_samples = data.shape[1]
         # create a time array that represents the 48kHz sampled data times
         t = np.arange(0, n_samples) / Fs  # creates a time array of the signal starting from 0 (in seconds)
 
         if not os.path.exists(tetrode_filename):
-            ##################################################################################################
+            '''
+            # --------------------------------Notch Filter if necessary --------------------------------------
+
+            # Applying Notch Filter
+
             # ---------------------------Band Pass Filter the Unit Data --------------------------------------
-            ##################################################################################################
+
             self.LogAppend.myGUI_signal.emit(
                 '[%s %s]: High Pass Filtering the Spike Data for T%d!' %
                 (str(datetime.datetime.now().date()),
                  str(datetime.datetime.now().time())[:8], tetrode))
 
-            data = sp.Filtering().iirfilt(bandtype='band', data=data, Fs=Fs, Wp=300, Ws=7e3, order=3, automatic=0, Rp=3,
-                                As=60, filttype='butter', showresponse=0)
+            #data = filt.iirfilt(bandtype='band', data=data, Fs=Fs, Wp=300, Ws=7000, order=3, automatic=0,
+            #                              Rp=0.1, As=60, filttype='butter', showresponse=0)
 
-            ##################################################################################################
-            # --------------------------------Notch Filter if necessary --------------------------------------
-            ##################################################################################################
+            # data = filt.custom_cheby1(data, Fs, 3, 0.1, 300, Ws=7e3, filtresponse='bandpass')
+            '''
 
-            # Applying Notch Filter
-
-            '''The read_data function will notch_filter if it is set in the settings, we will automatically make it so that
-            value is not set, that the notch filter gets applied anyways'''
-
-            self.LogAppend.myGUI_signal.emit(
-                '[%s %s]: Notch Filtering the T%d data!' %
-                (str(datetime.datetime.now().date()),
-                 str(datetime.datetime.now().time())[:8], tetrode))
-
-            data = sp.Filtering().notch_filt(data, Fs, freq=60, band=10,
-                                             order=3, showresponse=0)
-
-            data = int16toint8(data)  # converting the data into int8
-
-            # uV_scalar8 = getScalar(tetrode_channels, set_filename, mode='8bit')  # the tetrode data is 8 bit
-            # uV_scalar8 = np.tile(uV_scalar8.reshape((len(uV_scalar8), 1)), data.shape[1])
-
-            # convert from uV to 8 bits
-            # data = np.rint(np.divide(data, uV_scalar8))  # 8bits,
-
-
-            ##################################################################################################
             # ---------------------------Find the spikes in the unit data --------------------------------------
-            ##################################################################################################
 
             self.LogAppend.myGUI_signal.emit(
                 '[%s %s]: Finding the spikes for the tetrode %d!' %
@@ -547,29 +519,15 @@ def convert_basename(self, set_filename):
 
             k = 0
 
-            valid_spikes = np.array([])
-            #valid_spikes = []
+            # data = int16toint8(data)  # converting the data into int8
 
-            pre_spike_samples = int(get_setfile_parameter('pretrigSamps', set_filename))
-            post_spike_samples = int(get_setfile_parameter('spikeLockout', set_filename))
-
-            # session_parameters['pretrigSamps'] = pre_spike_samples
-            # session_parameters['spikeLockout'] = post_spike_samples
-
-            # min_spike_time_diff = int(np.rint(Fs * (200 / 1e6)))
-
+            tetrode_thresholds = []
             for channel_index, channel in enumerate(tetrode_channels):
                 k += 1
                 self.LogAppend.myGUI_signal.emit(
                     '[%s %s]: Finding the spikes within T%dCh%d!' %
                     (str(datetime.datetime.now().date()),
                      str(datetime.datetime.now().time())[:8], tetrode, k))
-
-                # channel_num = channel - 1  # channel number in the 0-> 63 range
-
-                #  = np.amax(data[channel_index, :])
-                # channel_min = np.amin(data[channel_index, :])
-                # t_waveform = np.linspace(-200 / 1e6, 800 / 1e6, num=50)  # getting the 50 samples per spike
 
                 '''Auto thresholding technique incorporated by:
                 Quian Quiroga in 2014 - Unsupervised Spike Detection and Sorting with Wavelets and
@@ -581,98 +539,24 @@ def convert_basename(self, set_filename):
 
                 sigma_n = np.median(np.divide(np.abs(data[channel_index, :]), 0.6745))
                 # threshold = sigma_n / channel_max
-                threshold = standard_deviations * sigma_n
+                # threshold = standard_deviations * sigma_n
+                tetrode_thresholds.append(standard_deviations * sigma_n)
 
-                spike_indices = detect_peaks(data[channel_index, :], mpd=1, mph=threshold,
-                                             threshold=0)
-                # spike_indices = peakutils.peak.indexes(data[channel_index, :], thres=0.2, min_dist=1)
-                # spike_indices = [spike for spike in spike_indices if data[channel_index, spike] >= threshold]
+            valid_spikes = get_spikes(data, [threshold, threshold, threshold, threshold])
 
-                # removing spike indices that will not allow for us to have 200us pre and 800 us post-spike
-                spike_indices = np.asarray([spike for spike in spike_indices
-                                            if spike - pre_spike_samples + 1 >= 0 and
-                                            spike + post_spike_samples <= len(data[channel_index, :])])
+            self.LogAppend.myGUI_signal.emit(
+                '[%s %s]: Number of spikes found: %d!' %
+                (str(datetime.datetime.now().date()),
+                 str(datetime.datetime.now().time())[:8], len(valid_spikes)))
 
-                self.LogAppend.myGUI_signal.emit(
-                    '[%s %s]: Number of spikes found: %d!' %
-                    (str(datetime.datetime.now().date()),
-                     str(datetime.datetime.now().time())[:8], len(spike_indices)))
+            # threshold is done in 16 bit values, but the rejection is done in 8bit, so we convert here
+            # data = int16toint8(data)  # converting the data into int8
 
-                if len(valid_spikes) == 0:
-                    # this is the first iteration of the tetrode, no need to sort
-                    unadded_spikes = spike_indices
-                else:
-                    idx = matching_ind(valid_spikes, spike_indices)
-                    if len(idx) == 0:
-                        unadded_spikes = spike_indices
-                    else:
-                        unadded_spikes = np.setdiff1d(spike_indices, valid_spikes[idx])
+            data = int16toint8(data)  # converting the data into int8
 
-                if len(valid_spikes) != 0:
-                    valid_spikes = np.sort(np.concatenate((valid_spikes, unadded_spikes)))
-                    unadded_spikes = None
-                else:
-                    valid_spikes = np.array(unadded_spikes)
-
-            # initializing the first spike
-            latest_spike = valid_spikes[0]
-
-            spike_count = 0
-            percentage_values = [int(value) for value in np.rint(np.linspace(0, len(valid_spikes), num=21)).tolist()]
-
-            for spike in sorted(valid_spikes):
-                # iterate through each spike and validate to ensure no spikes occur at the same time or within the
-                # refractory period
-
-                spike_count += 1
-
-                if spike_count in percentage_values:
-                    self.LogAppend.myGUI_signal.emit(
-                        '[%s %s]: %d%% completed adding spikes from T%d!' %
-                        (str(datetime.datetime.now().date()),
-                         str(datetime.datetime.now().time())[:8], int(np.rint(100 * spike_count / len(valid_spikes))),
-                         tetrode))
-
-                if spike != latest_spike:
-                    if spike in spike_refractory:
-                        # ensures no overlapping spikes
-                        continue
-                else:
-                    # calculate spike_refractory to ensure that no spikes get added within this range
-                    # this statement will only occur for the first spike since we set the init spike as validspikes[0]
-                    spike_refractory = list(np.arange(spike + 1, spike + post_spike_samples + 1))
-
-                spike_time = t[int(spike)]
-
-                # waveform_indices = np.where((t>=spike_time-250/1e6) & (t<=spike_time+850/1e6))[0]  # too slow
-                waveform_indices = np.arange(spike - pre_spike_samples + 1, spike + post_spike_samples + 1).astype(int)
-
-                # spike_t = t[waveform_indices] - spike_time  # making the times from -200 us to 800 us
-
-                # spike_waveform = np.zeros((len(tetrode_channels), 50))
-
-                spike_waveform = data[:, waveform_indices]
-
-                spike_time = spike_time * 96000  # multiply it by the timebase to get the frame count
-
-                spike_waveform = np.rint(spike_waveform)
-
-                # artifact rejection
-
-                # check if the last two thirds of the data has values well above baseline
-                if sum(spike_waveform[:, -20:].flatten() >= 43) > 0:
-                    # this is 33% above baseline (0)
-                    continue
-
-                # check if the first sample is well above or well below baseline
-                elif sum(np.abs(spike_waveform[:, 0].flatten()) >= 100) > 0:
-                    # the first sample is >100 or <-100
-                    continue
-
-                tetrode_spikes[spike_time] = spike_waveform
-
-                latest_spike = spike
-                spike_refractory = list(np.arange(spike + 1, spike + post_spike_samples + 1))
+            tetrode_spikes = validate_spikes(self, valid_spikes, data, t, pre_spike_samples,
+                                             post_spike_samples, rejstart, rejthreshtail, rejthreshupper,
+                                             rejthreshlower)
 
             # write the tetrode data to create the .N file
             self.LogAppend.myGUI_signal.emit(
@@ -1291,6 +1175,117 @@ def remove_appended_zeros(data):
     return zero_ind
 
 
+def get_spikes(data, threshold):
+    all_spikes = np.array([])
+
+    for i, channel_data in enumerate(data):
+        spike_indices = np.where(channel_data >= threshold[i])[0]
+        spike_indices = find_consec(spike_indices)
+
+        spike_indices = np.asarray([value[0] for value in spike_indices])
+
+        if len(spike_indices) == 0:
+            continue
+
+        if len(all_spikes) == 0:
+            # this is the first iteration of the tetrode, no need to sort
+            unadded_spikes = spike_indices
+        else:
+            idx = matching_ind(all_spikes, spike_indices)
+            if len(idx) == 0:
+                unadded_spikes = spike_indices
+            else:
+                unadded_spikes = np.setdiff1d(spike_indices, all_spikes[idx])
+
+        if len(all_spikes) != 0:
+            all_spikes = np.sort(np.concatenate((all_spikes, unadded_spikes)))
+            unadded_spikes = None
+        else:
+            all_spikes = np.array(unadded_spikes)
+
+    return all_spikes
+
+
+def validate_spikes(self, spikes, data, t, pre_spike_samples=10, post_spike_samples=40, rejstart=30,
+                    rejthreshtail=43, rejthreshupper=100, rejthreshlower=-100):
+    latest_spike = None
+
+    spike_count = 0
+    percentage_values = [int(value) for value in np.rint(np.linspace(0, len(spikes), num=21)).tolist()]
+
+    n_max = data.shape[1]
+
+    tetrode_spikes = {}
+
+    for spike in sorted(spikes):
+        # iterate through each spike and validate to ensure no spikes occur at the same time or within the
+        # refractory period
+
+        spike_count += 1
+
+        if spike_count in percentage_values:
+            self.LogAppend.myGUI_signal.emit(
+                '[%s %s]: %d%% completed adding spikes from T%d!' %
+                (str(datetime.datetime.now().date()),
+                 str(datetime.datetime.now().time())[:8], int(np.rint(100 * spike_count / len(spikes))),
+                 tetrode))
+
+        if spike - pre_spike_samples + 1 < 0:
+            continue
+
+        elif spike + post_spike_samples >= n_max:
+            continue
+
+        if latest_spike is not None:
+            if spike != latest_spike:
+                if spike in spike_refractory:
+                    # ensures no overlapping spikes
+                    continue
+        else:
+            pass
+
+        latest_spike = spike
+        spike_refractory = list(np.arange(spike + 1, spike + post_spike_samples + 1))
+
+        # spike_time = t[int(spike)]
+        spike_time = t[int(spike)]
+
+        # waveform_indices = np.where((t>=spike_time-250/1e6) & (t<=spike_time+850/1e6))[0]  # too slow
+        waveform_indices = np.arange(spike - pre_spike_samples + 1, spike + post_spike_samples + 1).astype(int)
+
+        # spike_t = t[waveform_indices] - spike_time  # making the times from -200 us to 800 us
+
+        # spike_waveform = np.zeros((len(tetrode_channels), 50))
+
+        spike_waveform = data[:, waveform_indices]
+
+        spike_time = spike_time * 96000  # multiply it by the timebase to get the frame count
+
+        spike_waveform = np.rint(spike_waveform)
+
+        # artifact rejection
+
+        if sum(spike_waveform[:, rejstart:].flatten() > rejthreshtail) > 0:
+            # this is 33% above baseline (0)
+            continue
+
+        # check if the first sample is well above or well below baseline
+        elif sum(spike_waveform[:, 0].flatten() > rejthreshupper) > 0:
+            # the first sample is >100
+            continue
+
+        elif sum(spike_waveform[:, 0].flatten() < rejthreshlower) > 0:
+            # or < -100
+            continue
+
+        tetrode_spikes[spike_time] = spike_waveform
+
+        # latest_spike = spike
+        # spike_refractory = list(np.arange(spike + 1, spike + post_spike_samples + 1))
+
+    return tetrode_spikes
+
+
 def create_eeg(filename, data, Fs, DC_Blocker=True):
     # data is given in int16
 
@@ -1303,37 +1298,36 @@ def create_eeg(filename, data, Fs, DC_Blocker=True):
     duration = data.shape[1] / Fs
 
     if DC_Blocker:
-        data = sp.Filtering().dcblock(data, 0.1, Fs)
+        data = filt.dcblock(data, 0.1, Fs)
 
     # LP at 500
-    data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
+    data = filt.iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
                                   automatic=0, Rp=0.1, As=60, filttype='cheby1', showresponse=0)
 
     # notch filter the data
-    # data = sp.Filtering().notch_filt(data, Fs, freq=60, band=10, order=3)
+    data = filt.notch_filt(data, Fs, freq=60, band=10, order=2)
 
     # downsample to 4.8khz signal for EGF signal (EEG is derived from EGF data)
 
     data = data[:, 0::int(Fs / Fs_EGF)]
 
-    data = sp.Filtering().notch_filt(data, Fs_EGF, freq=60, band=10, order=3)
+    # data = filt.notch_filt(data, Fs_EGF, freq=60, band=10, order=3)
 
     t = np.arange(data.shape[1]) / Fs_EGF
 
     # now apply lowpass at 125 hz to prevent aliasing of EEG
-    data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs_EGF, Wp=Fs_EEG / 2, order=6,
+    data = filt.iirfilt(bandtype='low', data=data, Fs=Fs_EGF, Wp=Fs_EEG / 2, order=6,
                                   Rp=0.1, filttype='cheby1', showresponse=0)
 
     # f = interpolate.interp1d(data[:, indices].flatten(), t[indices], kind='nearest')
     f = interpolate.interp1d(t, data.flatten(), kind='nearest')
-
 
     num_eeg = int(np.floor(duration) * Fs_EEG)
 
     t_eeg = np.arange(num_eeg) / Fs_EEG
 
     # notch filter the data
-    # data = sp.Filtering().notch_filt(data, Fs_EEG, freq=60, band=10, order=3)
+    # data = filt.notch_filt(data, Fs_EEG, freq=60, band=10, order=3)
 
     data = f(t_eeg)
 
@@ -1341,7 +1335,7 @@ def create_eeg(filename, data, Fs, DC_Blocker=True):
     duration_round = np.ceil(duration)  # the duration should be rounded up to the nearest integer
     missing_samples = int(duration_round * Fs_EEG - len(data))
 
-    print('missing samples', missing_samples)
+    # print('missing samples', missing_samples)
     if missing_samples != 0:
         missing_samples_array = np.tile(np.array([0]), (1, missing_samples))
         data = np.hstack((data.reshape((1, -1)), missing_samples_array))
@@ -1365,21 +1359,21 @@ def create_egf(filename, data, Fs, DC_Blocker=True):
     Fs_EGF = 4.8e3  # sampling rate of .EGF files
 
     if DC_Blocker:
-        data = sp.Filtering().dcblock(data, 0.1, Fs)
+        data = filt.dcblock(data, 0.1, Fs)
 
     # LP at 500
-    data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
+    data = filt.iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
                                   automatic=0, Rp=0.1, filttype='cheby1', showresponse=0)
 
     # notch filter the data
-    # data = sp.Filtering().notch_filt(data, Fs, freq=60, band=10, order=3)
+    data = filt.notch_filt(data, Fs, freq=60, band=10, order=2)
 
     # downsample to 4.8khz signal for EGF signal (EEG is derived from EGF data)
 
     data = data[:, 0::int(Fs / Fs_EGF)]
 
     # notch filter the data
-    data = sp.Filtering().notch_filt(data, Fs_EGF, freq=60, band=10, order=3)
+    # data = filt.notch_filt(data, Fs_EGF, freq=60, band=10, order=3)
 
     # append zeros to make the duration a round number
     duration_round = np.ceil(data.shape[1] / Fs_EGF)  # the duration should be rounded up to the nearest integer
