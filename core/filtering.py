@@ -79,7 +79,7 @@ def notch_filt(data, Fs, band=10, freq=60, ripple=1, order=2, filter_type='butte
     return filtered_data
 
 
-def iirfilt(bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=1, Rp=3, As=60, filttype='butter',
+def iirfilt(bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=0, Rp=3, As=60, filttype='butter',
             showresponse=0):
     '''Designs butterworth filter:
     Data is the data that you want filtered

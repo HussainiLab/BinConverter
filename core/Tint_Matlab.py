@@ -8,6 +8,54 @@ import mmap
 import contextlib
 
 
+def int16toint8(value):
+    """Converts int16 data to int8"""
+    value = np.divide(value, 256).astype(int)
+    value[np.where(value > 127)] = 127
+    value[np.where(value < -128)] = -128
+
+    return value
+
+
+def remEEGShift(t, EEG):
+    """This function removes the shift that the EEG undergoes"""
+    EEG = EEG.flatten()
+    Fs_EGF = int(4.8e3)
+    # normal delay is 0.5(n_taps-1) / Fs_EGF, n_taps is 101 for the FIR filter
+    # there is already a shift of 18 as the EEG starts off using the 18th EGF data
+    delay = (0.5 * (101 - 1) - 18) / Fs_EGF
+
+    t = t - delay
+
+    t_bool = np.where(t >= 0)[0]
+    t = t[t_bool]
+    EEG = EEG[t_bool]
+
+    return t, EEG
+
+
+def MatlabNumSeq(start, stop, step, exclude=True):
+    """In Matlab you can type:
+
+    start:step:stop and easily create a numerical sequence
+
+    if exclude is true it will exclude any values greater than the stop value
+    """
+
+    '''np.arange(start, stop, step) works good most of the time
+
+    However, if the step (stop-start)/step is an integer, then the sequence
+    will stop early'''
+
+    seq = np.arange(start, stop + step, step)
+
+    if exclude:
+        if seq[-1] > stop:
+            seq = seq[:-1]
+
+    return seq
+
+
 class TintException(Exception):
     def __init___(self,message):
         Exception.__init__(self,"%s" % message)

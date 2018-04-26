@@ -1,27 +1,13 @@
-import math
-import peakutils
-
+import struct, scipy, mmap, contextlib, datetime, os, time
+from PyQt4 import QtGui
+import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy import interpolate
 import core.filtering as filt
-
-from BatchTint.KlustaFunctions import *
-from core.Tint_Matlab import *
-import mmap
-import contextlib
+from BatchTint.KlustaFunctions import klusta
+from core.Tint_Matlab import int16toint8
+import matplotlib.pyplot as plt
 import numpy.distutils.system_info as sysinfo
-
-
-def int16toint8(value):
-    """Converts int16 data to int8"""
-    value = np.divide(value, 256)
-    pos_bool = np.where(value >= 0)
-    neg_bool = np.where(value < 0)
-
-    value[pos_bool] = np.floor(value[pos_bool])
-    value[neg_bool] = np.ceil(value[neg_bool])
-
-    return value
 
 
 def find_sub(string, sub):
@@ -542,7 +528,11 @@ def convert_basename(self, set_filename):
                 # threshold = standard_deviations * sigma_n
                 tetrode_thresholds.append(standard_deviations * sigma_n)
 
-            valid_spikes = get_spikes(data, [threshold, threshold, threshold, threshold])
+
+            # threshold = int(17152)
+            # tetrode_thresholds = [threshold, threshold, threshold, threshold]
+
+            valid_spikes = get_spikes(data, tetrode_thresholds)
 
             self.LogAppend.myGUI_signal.emit(
                 '[%s %s]: Number of spikes found: %d!' %
@@ -554,7 +544,7 @@ def convert_basename(self, set_filename):
 
             data = int16toint8(data)  # converting the data into int8
 
-            tetrode_spikes = validate_spikes(self, valid_spikes, data, t, pre_spike_samples,
+            tetrode_spikes = validate_spikes(self, tetrode, valid_spikes, data, t, pre_spike_samples,
                                              post_spike_samples, rejstart, rejthreshtail, rejthreshupper,
                                              rejthreshlower)
 
@@ -642,7 +632,7 @@ def convert_basename(self, set_filename):
 
         if os.path.exists(egf_filename):
             self.LogAppend.myGUI_signal.emit(
-                '[%s %s]: The following EEG file has already been created, skipping: %s!' %
+                '[%s %s]: The following EGF file has already been created, skipping: %s!' %
                 (str(datetime.datetime.now().date()),
                  str(datetime.datetime.now().time())[:8], eeg_filename))
         else:
@@ -652,6 +642,11 @@ def convert_basename(self, set_filename):
                 create_egf(egf_filename, EEG, Fs, DC_Blocker=self.dc_blocker.isChecked())
                 EEG = None
             else:
+                self.LogAppend.myGUI_signal.emit(
+                    '[%s %s]: Creating the following EGF file: .egf%s!' %
+                    (str(datetime.datetime.now().date()),
+                     str(datetime.datetime.now().time())[:8], eeg_str))
+
                 # then the EEG hasn't been read in (EEG was already created), read the data
                 EGF = get_bin_data(bin_filename, channels=[channel])
 
@@ -958,6 +953,37 @@ def is_egf_active(set_filename):
         return False
 
 
+def fir_hann(data, Fs, cutoff, n_taps=101, showresponse=0):
+    # The Nyquist rate of the signal.
+    nyq_rate = Fs / 2
+
+    b = scipy.signal.firwin(n_taps, cutoff / nyq_rate, window='hann')
+
+    a = 1.0
+    # Use lfilter to filter x with the FIR filter.
+    data = scipy.signal.lfilter(b, a, data)
+    # data = scipy.signal.filtfilt(b, a, data)
+
+    if showresponse == 1:
+        w, h = scipy.signal.freqz(b, a, worN=8000)  # returns the requency response h, and the angular frequencies
+        # w in radians/sec
+        # w (radians/sec) * (1 cycle/2pi*radians) = Hz
+        # f = w / (2 * np.pi)  # Hz
+
+
+        plt.figure(figsize=(20, 15))
+        plt.subplot(211)
+        plt.semilogx((w / np.pi) * nyq_rate, np.abs(h), 'b')
+        plt.xscale('log')
+        plt.title('%s Filter Frequency Response')
+        plt.xlabel('Frequency(Hz)')
+        plt.ylabel('Gain [V/V]')
+        plt.margins(0, 0.1)
+        plt.grid(which='both', axis='both')
+        plt.axvline(cutoff, color='green')
+
+    return data, n_taps
+
 def has_files(set_filename):
     """This method will check if all the necessary files exist"""
 
@@ -1206,7 +1232,7 @@ def get_spikes(data, threshold):
     return all_spikes
 
 
-def validate_spikes(self, spikes, data, t, pre_spike_samples=10, post_spike_samples=40, rejstart=30,
+def validate_spikes(self, tetrode, spikes, data, t, pre_spike_samples=10, post_spike_samples=40, rejstart=30,
                     rejthreshtail=43, rejthreshupper=100, rejthreshlower=-100):
     latest_spike = None
 
@@ -1292,88 +1318,24 @@ def create_eeg(filename, data, Fs, DC_Blocker=True):
     if os.path.exists(filename):
         return
 
-    Fs_EEG = 250  # sampling rate of .EEG files
-    Fs_EGF = 4.8e3  # sampling rate of .EGF files
-
-    duration = data.shape[1] / Fs
-
+    Fs_EGF = int(4.8e3)  # sampling rate of .EGF files
+    Fs_EEG = int(250)
+    """
     if DC_Blocker:
-        data = filt.dcblock(data, 0.1, Fs)
+        data = sp.Filtering().dcblock(data, 0.1, Fs)
 
     # LP at 500
-    data = filt.iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
-                                  automatic=0, Rp=0.1, As=60, filttype='cheby1', showresponse=0)
-
-    # notch filter the data
-    data = filt.notch_filt(data, Fs, freq=60, band=10, order=2)
-
-    # downsample to 4.8khz signal for EGF signal (EEG is derived from EGF data)
-
-    data = data[:, 0::int(Fs / Fs_EGF)]
-
-    # data = filt.notch_filt(data, Fs_EGF, freq=60, band=10, order=3)
-
-    t = np.arange(data.shape[1]) / Fs_EGF
-
-    # now apply lowpass at 125 hz to prevent aliasing of EEG
-    data = filt.iirfilt(bandtype='low', data=data, Fs=Fs_EGF, Wp=Fs_EEG / 2, order=6,
-                                  Rp=0.1, filttype='cheby1', showresponse=0)
-
-    # f = interpolate.interp1d(data[:, indices].flatten(), t[indices], kind='nearest')
-    f = interpolate.interp1d(t, data.flatten(), kind='nearest')
-
-    num_eeg = int(np.floor(duration) * Fs_EEG)
-
-    t_eeg = np.arange(num_eeg) / Fs_EEG
-
-    # notch filter the data
-    # data = filt.notch_filt(data, Fs_EEG, freq=60, band=10, order=3)
-
-    data = f(t_eeg)
-
-    # append zeros to make the duration a round number
-    duration_round = np.ceil(duration)  # the duration should be rounded up to the nearest integer
-    missing_samples = int(duration_round * Fs_EEG - len(data))
-
-    # print('missing samples', missing_samples)
-    if missing_samples != 0:
-        missing_samples_array = np.tile(np.array([0]), (1, missing_samples))
-        data = np.hstack((data.reshape((1, -1)), missing_samples_array))
-
-        # ensuring the appropriate range of the values
-    data[np.where(data > 32767)] = 32767
-    data[np.where(data < -32768)] = -32768
-
-    data = int16toint8(data)  # converting from 16 bits to 8 bits,
-    ##################################################################################################
-    # ---------------------------Writing the EEG Data-------------------------------------------
-    ##################################################################################################
-
-    write_eeg(filename, data, Fs_EEG)
-
-
-def create_egf(filename, data, Fs, DC_Blocker=True):
-    if os.path.exists(filename):
-        return
-
-    Fs_EGF = 4.8e3  # sampling rate of .EGF files
-
-    if DC_Blocker:
-        data = filt.dcblock(data, 0.1, Fs)
-
-    # LP at 500
-    data = filt.iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
+    data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
                                   automatic=0, Rp=0.1, filttype='cheby1', showresponse=0)
 
     # notch filter the data
+    # data = sp.Filtering().notch_filt(data, Fs, freq=60, band=10, order=3)
     data = filt.notch_filt(data, Fs, freq=60, band=10, order=2)
 
     # downsample to 4.8khz signal for EGF signal (EEG is derived from EGF data)
+    """
 
     data = data[:, 0::int(Fs / Fs_EGF)]
-
-    # notch filter the data
-    # data = filt.notch_filt(data, Fs_EGF, freq=60, band=10, order=3)
 
     # append zeros to make the duration a round number
     duration_round = np.ceil(data.shape[1] / Fs_EGF)  # the duration should be rounded up to the nearest integer
@@ -1385,7 +1347,89 @@ def create_egf(filename, data, Fs, DC_Blocker=True):
     # ensure the full last second of data is equal to zero
     data[0, -int(Fs_EGF):] = 0
 
-    data = np.rint(data)  # convert the data to integers
+    data = data[0, :-Fs_EGF]
+
+    # data = np.rint(data)  # convert the data to integers
+    data = data.astype(np.int32)  # convert the data to integers
+
+    # ensuring the appropriate range of the values
+    data[np.where(data > 32767)] = 32767
+    data[np.where(data < -32768)] = -32768
+
+    data, N = fir_hann(data, Fs_EGF, 125, n_taps=101, showresponse=0)  # FIR filter to remove anti aliasing
+
+    data = int16toint8(data)
+
+    data = EEG_downsample(data)
+
+    # append 1 second of 0's like tint does
+    data = np.hstack((data.flatten(), np.zeros((250, 1)).flatten()))
+    ##################################################################################################
+    # ---------------------------Writing the EEG Data-------------------------------------------
+    ##################################################################################################
+
+    write_eeg(filename, data, Fs_EEG)
+
+
+def EEG_downsample(EEG):
+    """The EEG data is created from the EGF files which involves a 4.8k to 250 Hz conversion"""
+    EEG = EEG.flatten()
+
+    i = -1
+    # i = 0
+
+    # indices = [i]
+    indices = []
+    while i < len(EEG) - 1:
+        indices.extend([(i + 19), (i + 19 * 2), (i + 19 * 3), (i + 19 * 4), (i + 19 * 4 + 20)])
+        # indices.extend([(i+20), (i+20+19), (i+20+19*2), (i+20+19*3), (i+20+19*4)])
+        i += (19 * 4 + 20)
+
+    indices = np.asarray(indices)
+
+    indices = indices[np.where(indices <= len(EEG) - 1)]
+
+    return EEG[indices]
+
+
+def create_egf(filename, data, Fs, DC_Blocker=True):
+    if os.path.exists(filename):
+        return
+
+    Fs_EGF = int(4.8e3)  # sampling rate of .EGF files
+
+    """
+    if DC_Blocker:
+        data = sp.Filtering().dcblock(data, 0.1, Fs)
+
+    # LP at 500
+    data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
+                                  automatic=0, Rp=0.1, filttype='cheby1', showresponse=0)
+
+    # notch filter the data
+    # data = sp.Filtering().notch_filt(data, Fs, freq=60, band=10, order=3)
+    data = filt.notch_filt(data, Fs, freq=60, band=10, order=2)
+
+    # downsample to 4.8khz signal for EGF signal (EEG is derived from EGF data)
+    """
+
+    data = data[:, 0::int(Fs / Fs_EGF)]
+
+    # notch filter the data
+    # data = sp.Filtering().notch_filt(data, Fs_EGF, freq=60, band=10, order=3)
+
+    # append zeros to make the duration a round number
+    duration_round = np.ceil(data.shape[1] / Fs_EGF)  # the duration should be rounded up to the nearest integer
+    missing_samples = int(duration_round * Fs_EGF - data.shape[1])
+    if missing_samples != 0:
+        missing_samples = np.tile(np.array([0]), (1, missing_samples))
+        data = np.hstack((data, missing_samples))
+
+    # ensure the full last second of data is equal to zero
+    data[0, -int(Fs_EGF):] = 0
+
+    # data = np.rint(data)  # convert the data to integers
+    data = data.astype(np.int32)  # convert the data to integers
 
     # ensuring the appropriate range of the values
     data[np.where(data > 32767)] = 32767
