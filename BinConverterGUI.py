@@ -489,7 +489,13 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         self.convert_button.clicked.disconnect()
         self.convert_button.clicked.connect(self.Convert)
 
-        self.convert_thread.quit()
+        # self.convert_thread.quit()
+        self.convert_thread.terminate()
+        self.LogAppend.myGUI_signal.emit(
+            '[%s %s]: Conversion terminated!' %
+            (str(datetime.datetime.now().date()),
+             str(datetime.datetime.now().time())[:8]))
+        
         self.conversion = False
 
     def FindSessionsRepeat(self):

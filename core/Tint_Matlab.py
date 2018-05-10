@@ -191,6 +191,18 @@ def getpos(pos_fpath, arena, method=''):
     return x.reshape((len(x), 1)), y.reshape((len(y), 1)), t.reshape((len(t), 1)), sample_rate
 
 
+def is_tetrode(file, session):
+
+    if os.path.splitext(file)[0] == session:
+        try:
+            tetrode_number = int(os.path.splitext(file)[1][1:])
+            return True
+        except ValueError:
+            return False
+    else:
+        return False
+
+
 def find_tet(set_fullpath):
     '''finds the tetrode files available for a given .set file if there is a  .cut file existing'''
 
@@ -205,7 +217,7 @@ def find_tet(set_fullpath):
 
     # acquiring only a list of tetrodes that belong to that set file
     tetrode_list = [os.path.join(tetrode_path, file) for file in file_list
-                    if file in [fname_set + '.%d' % i for i in range(128)]]
+                    if is_tetrode(file, fname_set)]
 
     # if the .cut file doesn't exist remove list
     tetrode_list = [file for file in tetrode_list if os.path.exists(os.path.join(tetrode_path,
