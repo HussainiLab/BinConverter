@@ -1,52 +1,15 @@
-import sys, shutil
+import sys, shutil, os, time, datetime
 from PyQt4 import QtCore, QtGui
-from core.ConversionFunctions import *
+from core.ConversionFunctions import has_files, is_converted, convert_basename
 from distutils.dir_util import copy_tree
+from BatchTint.settings import Settings_Window
+from BatchTint.KlustaFunctions import batchtint
+from core.utils import background, Worker, center
 
 _author_ = "Geoffrey Barrett"  # defines myself as the author
 
 Large_Font = ("Arial", 11)  # defines two fonts for different purposes (might not be used
 Small_Font = ("Arial", 8)
-
-
-class Worker(QtCore.QObject):
-    '''This worker object will act to ensure that the QThreads are not within the Main Thread'''
-    # def __init__(self, main_window, thread):
-    def __init__(self, function, *args, **kwargs):
-        '''takes in a function, and the arguments and keyword arguments for that function'''
-        super(Worker, self).__init__()
-        self.function = function
-        self.args = args
-        self.kwargs = kwargs
-        self.start.connect(self.run)
-
-    start = QtCore.pyqtSignal(str)
-
-    @QtCore.pyqtSlot()
-    def run(self):
-        self.function(*self.args, **self.kwargs)
-
-
-def background(self):  # defines the background for each window
-    """providing the background info for each window"""
-    # Acquiring information about geometry
-    if getattr(sys, 'frozen', False):
-        # frozen
-        self.PROJECT_DIR = os.path.dirname(os.path.abspath(sys.executable))  # project directory
-    else:
-        # unfrozen
-        self.PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))  # project directory
-
-    self.IMG_DIR = os.path.join(self.PROJECT_DIR, 'img')  # image directory
-    self.CORE_DIR = os.path.join(self.PROJECT_DIR, 'core')  # core directory
-    # self.SETTINGS_DIR = os.path.join(self.PROJECT_DIR, 'settings')  # settings directory
-    self.BATCH_TINT_DIR = os.path.join(self.PROJECT_DIR, 'BatchTint')
-    self.setWindowIcon(QtGui.QIcon(os.path.join(self.IMG_DIR, 'cumc-crown.png')))  # declaring the icon image
-    self.deskW, self.deskH = QtGui.QDesktopWidget().availableGeometry().getRect()[2:]  # gets the window resolution
-    # self.setWindowState(QtCore.Qt.WindowMaximized) # will maximize the GUI
-    self.setGeometry(0, 0, self.deskW/2, self.deskH/1.75)
-
-    QtGui.QApplication.setStyle(QtGui.QStyleFactory.create('Cleanlooks'))
 
 
 class Window(QtGui.QWidget):  # defines the window class (main window)
@@ -105,9 +68,13 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         self.convert_button.clicked.connect(self.Convert)
         self.convert_button.setToolTip('Click to start the conversion.')
 
+        self.batch_tint_settings_window = None
+        self.batch_tint_settings_button = QtGui.QPushButton("Batch Tint Settings")
+        self.batch_tint_settings_button.clicked.connect(self.open_batch_tint_settings)
+
         btn_layout = QtGui.QHBoxLayout()
 
-        button_order = [self.convert_button, quit_btn]
+        button_order = [self.convert_button, self.batch_tint_settings_button, quit_btn]
         for button in button_order:
             btn_layout.addWidget(button)
 
@@ -124,7 +91,6 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
             mod_date = time.ctime(os.path.getmtime(dir_))  # finds the modification date of the program
             vers_label = QtGui.QLabel(
                 os.path.splitext(os.path.basename(__file__))[0] + " V1.0 - Last Updated: " + mod_date)
-
 
         # ------------------ widget layouts ----------------
         '''
@@ -148,41 +114,16 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         self.directory_edit.textChanged.connect(self.changed_directory)
         self.directory = self.directory_edit.text()
 
+        self.batch_tint_checkbox = QtGui.QCheckBox("Batch Tint")
+        self.batch_tint_checkbox.toggle()
+
         # creating the layout for the text + line-edit so that they are aligned appropriately
         current_directory_layout = QtGui.QHBoxLayout()
         current_directory_layout.addWidget(directory_label)
         current_directory_layout.addWidget(self.directory_edit)
+        current_directory_layout.addWidget(self.batch_tint_checkbox)
+
         #current_directory_layout.addWidget(self.batch_tint_checkbox)
-
-        # batch tint settings filename widgets
-
-        self.choose_batchtint_btn = QtGui.QPushButton('Choose Batch-Tint Settings', self)
-        self.choose_batchtint_btn.clicked.connect(self.new_settings_directory)
-
-        # the label that states that the line-edit corresponds to the current directory
-        batch_tint_label = QtGui.QLabel('Current Settings File:')
-        batch_tint_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-
-        # the line-edit that displays the current directory
-        self.batchtintsettings_edit = QtGui.QLineEdit()
-        self.batchtintsettings_edit.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)  # aligning the text
-        self.batchtintsettings_edit.setText("Choose the Batch-Tint Settings directory!")  # default text
-        # updates the directory every time the text changes
-        self.batchtintsettings_edit.textChanged.connect(self.changed_directory)
-        self.batchtintsettings = self.batchtintsettings_edit.text()
-
-        self.batch_tint_checkbox = QtGui.QCheckBox('Batch-Tint?')
-        self.batch_tint_checkbox.setToolTip('Leave Checked to Convert Run Batch-Tint after Conversion.')
-
-        # creating the layout for the text + line-edit so that they are aligned appropriately
-        current_settings_layout = QtGui.QHBoxLayout()
-        current_settings_layout.addWidget(batch_tint_label)
-        current_settings_layout.addWidget(self.batchtintsettings_edit)
-        current_settings_layout.addWidget(self.batch_tint_checkbox)
-
-        batch_settings_layout = QtGui.QHBoxLayout()
-        batch_settings_layout.addWidget(self.choose_batchtint_btn)
-        batch_settings_layout.addLayout(current_settings_layout)
 
         # creating a layout with the line-edit/text + the button so that they are all together
         directory_layout = QtGui.QHBoxLayout()
@@ -206,7 +147,6 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         log_layout = QtGui.QVBoxLayout()
         log_layout.addWidget(log_label)
         log_layout.addWidget(self.log)
-
 
         # adding the thresholding portion fo the layout
 
@@ -238,7 +178,7 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
 
         layout = QtGui.QVBoxLayout()
 
-        layout_order = [directory_layout, batch_settings_layout, recording_queue_layout, log_layout,
+        layout_order = [directory_layout, recording_queue_layout, log_layout,
                         parameters_layout, btn_layout]
 
         for order in layout_order:
@@ -260,6 +200,8 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
 
         self.show()
 
+        self.set_batch_tint_settings()
+
         # start thread that will search for new files to convert
 
         self.RepeatAddSessionsThread = QtCore.QThread()
@@ -268,6 +210,20 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         self.RepeatAddSessionsWorker = Worker(self.FindSessionsRepeat)
         self.RepeatAddSessionsWorker.moveToThread(self.RepeatAddSessionsThread)
         self.RepeatAddSessionsWorker.start.emit("start")
+
+    def set_batch_tint_settings(self):
+        """This method will be used for the Batch Tint Settings window.
+        It will define the window, as well as raise the window if it is already defined"""
+
+        if self.batch_tint_settings_window is None:
+            self.batch_tint_settings_window = Settings_Window(self)
+
+    def open_batch_tint_settings(self):
+
+        if self.batch_tint_settings_window is None:
+            self.set_batch_tint_settings()
+
+        self.batch_tint_settings_window.raise_window()
 
     def changed_directory(self):
         self.directory = self.directory_edit.text()
@@ -495,7 +451,7 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
             '[%s %s]: Conversion terminated!' %
             (str(datetime.datetime.now().date()),
              str(datetime.datetime.now().time())[:8]))
-        
+
         self.conversion = False
 
     def FindSessionsRepeat(self):
@@ -602,7 +558,7 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
 
         if 'default' in mode.lower():
 
-            default_settings = {'Batch-Tint': 0,
+            default_settings = {'Batch-Tint': 1,
                                 }
 
             for key, value in default_settings.items():
@@ -629,7 +585,7 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         else:
             parameters['batchtint'] = False
 
-        parameters['tintsettings'] = self.batchtintsettings_edit.text()
+        # parameters['tintsettings'] = self.batchtintsettings_edit.text()
 
         return parameters
 
@@ -672,15 +628,6 @@ class Communicate(QtCore.QObject):
     myGUI_signal_QTreeWidgetItem = QtCore.pyqtSignal(QtGui.QTreeWidgetItem)
 
 
-def center(self):
-    """centers the window on the screen"""
-    frameGm = self.frameGeometry()
-    screen = QtGui.QApplication.desktop().screenNumber(QtGui.QApplication.desktop().cursor().pos())
-    centerPoint = QtGui.QApplication.desktop().screenGeometry(screen).center()
-    frameGm.moveCenter(centerPoint)
-    self.move(frameGm.topLeft())
-
-
 def ConvertSession(main_window, directory, parameters):
 
     if 'Choose a Directory!' in directory:
@@ -696,6 +643,8 @@ def ConvertSession(main_window, directory, parameters):
     # current_session = directory
 
     main_window.current_session = directory
+
+    session_aborted = False
 
     # remove the appropriate session from the TreeWidget
     iterator = QtGui.QTreeWidgetItemIterator(main_window.recording_queue)
@@ -754,13 +703,17 @@ def ConvertSession(main_window, directory, parameters):
         if isinstance(converted, str):
             # ensures that the aborted session does not go into batchTint or get moved
             if 'Aborted' in converted:
+                session_aborted = True
                 continue
                 # return
 
-    if parameters['batchtint']:
+    if session_aborted:
+        return
+
+    if main_window.batch_tint_checkbox.isChecked():
         # if batch-tint is checked, don't move to converted, just convert run batchtint here
         # main_window.settings_fname = parameters['tintsettings']
-        batchtint(main_window, main_window.directory)
+        batchtint(main_window, main_window.directory, directory)
 
     else:
         # move to the converted file
@@ -795,5 +748,7 @@ def run():
 
     sys.exit(app.exec_())  # prevents the window from immediately exiting out
 
+
 if __name__ == '__main__':
     run()
+

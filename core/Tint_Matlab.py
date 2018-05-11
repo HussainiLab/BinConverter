@@ -1,7 +1,7 @@
 from __future__ import division, print_function
 import numpy as np
 import struct, os
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy.matlib
 from scipy.io import savemat
 import mmap
@@ -57,8 +57,8 @@ def MatlabNumSeq(start, stop, step, exclude=True):
 
 
 class TintException(Exception):
-    def __init___(self,message):
-        Exception.__init__(self,"%s" % message)
+    def __init___(self, message):
+        Exception.__init__(self, "%s" % message)
         self.message = message
 
 
@@ -617,100 +617,6 @@ def importspikes(filename):
             'ch3': np.asarray(waveform_data[2][:][:]), 'ch4': np.asarray(waveform_data[3][:][:])}, spikeparam
 
 
-def AUP(waveform, t_peak, plot_on=False):
-    total_time = 1  # ms
-
-    t = np.linspace(1 / (len(waveform)), total_time, len(waveform))
-
-    t_peak = t[t_peak-1]
-
-    dy_dt = np.diff(waveform) / max(np.diff(waveform))  # approximating 1st derivative and normalizing
-
-    ## defining the baseline
-
-    # create boolean array where the 1st derivative is between +/-10% of max
-    # and t >= 200 microseconds since that is when the spike occurs
-
-    bool_vel = ((dy_dt <= 0.1) * (dy_dt >= -0.1)) * (t[:-1] <= t_peak)  #
-
-    # find the first set of consecutive values between +/-10% to determine baseline
-    if sum(bool_vel) == 0:
-        # then there are no datum that satisfy those conditions
-        consec_base = t <= 0.05
-        base = np.mean(waveform[consec_base])
-    else:
-        # bool_index_values = np.arange(len(bool_vel))[bool_vel]
-        bool_index_values = np.where(bool_vel)[0]
-
-        consec_base = [bool_index_values[0]]
-
-        for index, value in enumerate(bool_index_values):
-
-            if index == len(bool_index_values) - 1:
-                break
-
-            if bool_index_values[index + 1] == (value + 1):
-                consec_base.append(bool_index_values[index + 1])
-            else:
-                break
-
-        base = np.mean(waveform[consec_base])
-
-        if base == max(waveform):
-            consec_base = t <= 0.05
-            base = np.mean(waveform[consec_base])
-    # Find the points under baseline to identify hyperpolarization
-
-    # hyper_bool = (t>=0.2) & (waveform <= base)
-    # print(t[np.where(waveform == max(waveform))[0][0]])
-    hyper_bool = (t > t[np.where(waveform == max(waveform))[0][0]]) & (waveform <= base)
-
-    if sum(hyper_bool) == 0:
-        # then there are no values below baseline
-        aup = 0
-        hyper_consec = []
-    else:
-        # find the first set of consecutive hyperpolarization points
-        # hyper_index_values = np.arange(len(hyper_bool))[hyper_bool]
-        hyper_index_values = np.where(hyper_bool)[0]
-        hyper_consec = [hyper_index_values[0]]
-
-        #print(hyper_consec)
-
-        for index, value in enumerate(hyper_index_values):
-            if index == len(hyper_index_values) - 1:
-                break
-
-            if hyper_index_values[index + 1] == value + 1:
-                hyper_consec.append(hyper_index_values[index + 1])
-            else:
-                break
-
-        if hyper_consec[-1] == len(waveform) - 1:
-            # we need to see if
-            for index in range(len(hyper_consec), 0, -1):
-                pass
-
-        if len(hyper_consec) == 1:
-            aup = np.abs(waveform[hyper_consec] - base) / (t[1] - t[0])
-        else:
-            aup = np.trapz(abs(waveform[hyper_consec] - base), t[hyper_consec])
-
-    if plot_on:
-        base_y = np.array([base, base])
-        base_x = np.array([0, 1])
-        plt.figure()
-        waveform_plot = plt.plot(t, waveform, 'b', label='Waveform')
-        baseline_plot = plt.plot(base_x, base_y, 'r--', label='Average Baseline')
-        baseline_end = plt.plot(t[consec_base], waveform[consec_base], 'rx', ms=5, label='Baseline Values')
-        if len(hyper_consec) != 0:
-            baseline_end = plt.plot(t[hyper_consec], waveform[hyper_consec], 'go', ms=5, label='AUP Values')
-        plt.legend()
-        plt.show()
-
-    return aup
-
-
 def speed2D(x, y, t):
     '''calculates an averaged/smoothed speed'''
 
@@ -824,7 +730,6 @@ def visitedBins(x, y, mapAxis):
 
 def spikePos(ts, x, y, t, cPost, shuffleSpks, shuffleCounter=True):
 
-    #randomize the time to shuffle spikes
     randtime = 0
 
     if shuffleSpks:

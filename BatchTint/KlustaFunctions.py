@@ -1,11 +1,29 @@
 # import os, read_data, json, subprocess
 import os, json, subprocess, time, datetime, queue, threading, smtplib
 from PyQt4 import QtGui
+# from PyQt5 import QtGui
 # from multiprocessing.dummy import Pool as ThreadPool
-from email.mime.text import MIMEText
+# from email.mime.text import MIMEText
 
 
-def klusta(self, sub_directory, directory):
+def is_tetrode(file, session):
+
+    if os.path.splitext(file)[0] == session:
+        try:
+            tetrode_number = int(os.path.splitext(file)[1][1:])
+            return True
+        except ValueError:
+            return False
+    else:
+        return False
+
+
+def get_tetrode_files(file_list, session):
+    tetrode_files = [file for file in file_list if is_tetrode(file, session)]
+    return tetrode_files
+
+
+def klusta(self, sub_directory, directory, settings_fname):
 
     self.LogAppend.myGUI_signal.emit(
         '[%s %s]: Now analyzing files in the %s folder!' % (
@@ -24,7 +42,7 @@ def klusta(self, sub_directory, directory):
         if not os.path.exists(_):  # makes the directories if they don't exist
             os.makedirs(_)
 
-    with open(self.settings_fname, 'r+') as f:  # opens setting file
+    with open(settings_fname, 'r+') as f:  # opens setting file
         self.settings = json.load(f)  # loads settings
 
     f_list = os.listdir(sub_directory_fullpath)  # finds the files within that directory
@@ -58,8 +76,10 @@ def klusta(self, sub_directory, directory):
                 :8], set_file, i+1, len(set_files)))
 
         # acquires tetrode files within directory
-        tet_list = [file for file in f_list if file in ['%s.%d' % (set_file, tet_num)
-                                                        for tet_num in range(1, int(self.settings['NumTet']) + 1)]]
+        # tet_list = [file for file in f_list if file in ['%s.%d' % (set_file, tet_num)
+        #                                                for tet_num in range(1, int(self.settings['NumTet']) + 1)]]
+
+        tet_list = get_tetrode_files(f_list, set_file)
         #  if there are no tetrodes then skips
 
         analyzeable, error_return = check_analyzeable(self, sub_directory_fullpath, set_file, tet_list)
@@ -102,15 +122,7 @@ def klusta(self, sub_directory, directory):
         else:
             error.extend(error_return)
             continue
-    '''
-    if 'skipped_mat' in locals():
-        for k in range(len(skipped_mat)):
-            if skipped_mat[k] == 1:
-                skipped = 1
 
-
-    if skipped == 0:
-    '''
     self.LogAppend.myGUI_signal.emit(
         '[%s %s]: Analysis in the %s directory has been completed!' % (
             str(datetime.datetime.now().date()),
@@ -119,7 +131,7 @@ def klusta(self, sub_directory, directory):
 
     processed_directory = os.path.join(directory, 'Processed')
 
-    send_email(self, experimenter, error, sub_directory, processed_directory)
+    # send_email(self, experimenter, error, sub_directory, processed_directory)
 
     processing = 1
     while processing == 1:
@@ -155,9 +167,13 @@ def analyze_tetrode(self, q, experimenter,
         tet_list = [q.get()]
         for tet_fname in tet_list:
 
+            '''
             for i in range(1, int(self.settings['NumTet']) + 1):
                 if ['%s%d' % ('.', i) in tet_fname][0]:
                     tetrode = i
+            '''
+
+            tetrode = int(os.path.splitext(tet_fname)[-1][1:])
 
             self.LogAppend.myGUI_signal.emit(
                 '[%s %s]: Now analyzing the following file: %s!' % (
@@ -248,16 +264,7 @@ def analyze_tetrode(self, q, experimenter,
                     fname.seek(0, 2)  # seek the files end
                     fname.write(write_order)
                 fname.close()
-            '''
-            writing = 1
 
-            while writing == 1:
-                new_cont = os.listdir(sub_directory_fullpath)
-                if ini_fname in new_cont:
-                    writing = 0
-                else:
-                    writing = 1
-            '''
 
             log_fpath = tet_path + '_log.txt'
             log_fname = tet_fname + '_log.txt'
@@ -605,7 +612,7 @@ def send_email(self, experimenter, error, sub_directory, processed_directory):
 
             subject = str(sub_directory) + ' folder processed! [Automated Message]'
 
-            text_list = ['Greetings from the Batch-TINTV2 automated messaging system!\n\n',
+            text_list = ['Greetings from the Batch-TINTV3 automated messaging system!\n\n',
                          'The "' + sub_directory + '" directory has finished processing and is now located in the "' +
                          processed_directory + '" folder.\n\n',
                          'The errors that occurred during processing are the following:\n\n']
@@ -613,13 +620,7 @@ def send_email(self, experimenter, error, sub_directory, processed_directory):
             for i in range(len(error)):
                 text_list.append(error[i])
 
-            '''
-            for i in range(len(error)):
-                for k in range(1, int(self.settings['NumTet']) + 1):
-                    if '%s %d' % ('Tetrode', k) in error[i]:
-                        while
-                        text_list.append(error[i])
-            '''
+
             text_list.append('\nHave a nice day,\n')
             text_list.append('Batch-TINTV2\n\n')
             text = ''.join(text_list)
@@ -657,3 +658,74 @@ def send_email(self, experimenter, error, sub_directory, processed_directory):
                             str(datetime.datetime.now().date()),
                             str(datetime.datetime.now().time())[
                             :8]))
+
+
+def batchtint(main_window, directory, subdirectory):
+
+    batch_settings_window = main_window.batch_tint_settings_window
+
+    # if batch_settings_window is None:
+    #    main_window.create_settings_signal.myGUI_signal.emit('create')
+
+    settings_fname = main_window.batch_tint_settings_window.settings_fname
+
+    # klusta_ready = check_klusta_ready(main_window, directory, main_window.parameters['tintsettings'])
+    klusta_ready = True
+
+    if klusta_ready:
+        main_window.LogAppend.myGUI_signal.emit(
+            '[%s %s]: Analyzing the following directory: %s!' % (str(datetime.datetime.now().date()),
+                                                                 str(datetime.datetime.now().time())[
+                                                                 :8], directory))
+        # ------------- find all subdirectories within directory -------------------------------------
+
+        sub_directories = [d for d in os.listdir(directory) if
+                           os.path.isdir(os.path.join(directory, d)) and d not in ['Processed', 'Converted']]
+
+        if not sub_directories:
+
+            # message that shows how many files were found
+            main_window.LogAppend.myGUI_signal.emit(
+                '[%s %s]: There are no files to analyze in this directory!' % (str(datetime.datetime.now().date()),
+                                                                               str(datetime.datetime.now().time())[
+                                                                               :8]))
+            return
+
+        else:
+            # message that shows how many files were found
+            main_window.LogAppend.myGUI_signal.emit(
+                '[%s %s]: Found %d files in the directory!' % (str(datetime.datetime.now().date()),
+                                                               str(datetime.datetime.now().time())[
+                                                               :8], len(sub_directories)))
+
+        # ----------- cycle through each file and find the tetrode files ------------------------------------------
+
+        for sub_directory in sub_directories:  # finding all the folders within the directory
+            if subdirectory == sub_directory:
+
+                try:
+                    dir_new = os.path.join(directory, sub_directory)  # sets a new filepath for the directory
+                    f_list = os.listdir(dir_new)  # finds the files within that directory
+                    set_file = [file for file in f_list if '.set' in file]  # finds the set file
+
+                    if not set_file:  # if there is no set file it will return as an empty list
+                        # message saying no .set file
+                        main_window.LogAppend.myGUI_signal.emit(
+                            '[%s %s]: The following folder contains no \'.set\' file: %s' % (
+                                str(datetime.datetime.now().date()),
+                                str(datetime.datetime.now().time())[
+                                :8], str(sub_directory)))
+                        continue
+                    # runs the function that will perform the klusta'ing
+                    klusta(main_window, sub_directory, directory, settings_fname)
+
+                except NotADirectoryError:
+                    # if the file is not a directory it prints this message
+                    main_window.LogAppend.myGUI_signal.emit(
+                        '[%s %s]: %s is not a directory!' % (
+                            str(datetime.datetime.now().date()),
+                            str(datetime.datetime.now().time())[
+                            :8], str(sub_directory)))
+                    continue
+
+                break

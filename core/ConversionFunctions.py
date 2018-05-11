@@ -528,7 +528,6 @@ def convert_basename(self, set_filename):
                 # threshold = standard_deviations * sigma_n
                 tetrode_thresholds.append(standard_deviations * sigma_n)
 
-
             # threshold = int(17152)
             # tetrode_thresholds = [threshold, threshold, threshold, threshold]
 
@@ -1206,12 +1205,13 @@ def get_spikes(data, threshold):
 
     for i, channel_data in enumerate(data):
         spike_indices = np.where(channel_data >= threshold[i])[0]
-        spike_indices = find_consec(spike_indices)
-
-        spike_indices = np.asarray([value[0] for value in spike_indices])
 
         if len(spike_indices) == 0:
             continue
+
+        spike_indices = find_consec(spike_indices)
+
+        spike_indices = np.asarray([value[0] for value in spike_indices])
 
         if len(all_spikes) == 0:
             # this is the first iteration of the tetrode, no need to sort
