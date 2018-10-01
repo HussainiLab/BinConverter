@@ -8,7 +8,7 @@ from scipy import signal
 from BatchTint.KlustaFunctions import klusta
 from core.Tint_Matlab import int16toint8
 import matplotlib.pyplot as plt
-from core.readBin import get_bin_data, get_raw_pos, get_channel_from_tetrode
+from core.readBin import get_bin_data, get_raw_pos, get_channel_from_tetrode, get_active_tetrode, get_active_eeg
 
 
 def find_sub(string, sub):
@@ -884,61 +884,6 @@ def is_converted(set_filename):
     return all_tetrodes_written and all_eeg_written and all_egf_written and pos_written
 
 
-def get_active_tetrode(set_filename):
-    """in the .set files it will say collectMask_X Y for each tetrode number to tell you if
-    it is active or not. T1 = ch1-ch4, T2 = ch5-ch8, etc."""
-    active_tetrode = []
-    active_tetrode_str = 'collectMask_'
-
-    with open(set_filename) as f:
-        for line in f:
-
-            # collectMask_X Y, where x is the tetrode number, and Y is eitehr on or off (1 or 0)
-            if active_tetrode_str in line:
-                tetrode_str, tetrode_status = line.split(' ')
-                if int(tetrode_status) == 1:
-                    # then the tetrode is saved
-                    tetrode_str.find('_')
-                    tet_number = int(tetrode_str[tetrode_str.find('_') + 1:])
-                    active_tetrode.append(tet_number)
-
-    return active_tetrode
-
-
-def get_active_eeg(set_filename):
-    """This will return a dictionary (cative_eeg_dict) where the keys
-    will be eeg channels from 1->64 which will represent the eeg suffixes (2 = .eeg2, 3 = 2.eeg3, etc)
-    and the key will be the channel that the EEG maps to (a channel from 0->63)"""
-    active_eeg = []
-    active_eeg_str = 'saveEEG_ch'
-
-    eeg_map = []
-    eeg_map_str = 'EEG_ch_'
-
-    active_eeg_dict = {}
-
-    with open(set_filename) as f:
-        for line in f:
-
-            if active_eeg_str in line:
-                # saveEEG_ch_X Y, where x is the eeg number, and Y is eitehr on or off (1 or 0)
-                _, status = line.split(' ')
-                active_eeg.append(int(status))
-            elif eeg_map_str in line:
-                # EEG_ch_X Y
-                _, chan = line.split(' ')
-                eeg_map.append(int(chan))
-
-                # active_eeg = np.asarray(active_eeg)
-                # eeg_map = np.asarray(eeg_map)
-
-    for i, status in enumerate(active_eeg):
-        if status == 1:
-            active_eeg_dict[i + 1] = eeg_map[i] - 1
-
-    return active_eeg_dict
-
-
 def is_egf_active(set_filename):
     active_egf_str = 'saveEGF'
 
@@ -1042,6 +987,7 @@ def get_channel_bytes(channel_number, samples):
     # return np.array([remap_channel, 64 + remap_channel, 64*2 + remap_channel])
     return (indices_scalar + np.multiply(np.ones(samples), remap_channel)).astype(int)
 '''
+
 
 def get_Fs(set_filename):
     fs_str = 'rawRate'

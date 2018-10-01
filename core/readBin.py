@@ -5,6 +5,61 @@ import mmap
 import numpy.distutils.system_info as sysinfo
 
 
+def get_active_tetrode(set_filename):
+    """in the .set files it will say collectMask_X Y for each tetrode number to tell you if
+    it is active or not. T1 = ch1-ch4, T2 = ch5-ch8, etc."""
+    active_tetrode = []
+    active_tetrode_str = 'collectMask_'
+
+    with open(set_filename) as f:
+        for line in f:
+
+            # collectMask_X Y, where x is the tetrode number, and Y is eitehr on or off (1 or 0)
+            if active_tetrode_str in line:
+                tetrode_str, tetrode_status = line.split(' ')
+                if int(tetrode_status) == 1:
+                    # then the tetrode is saved
+                    tetrode_str.find('_')
+                    tet_number = int(tetrode_str[tetrode_str.find('_') + 1:])
+                    active_tetrode.append(tet_number)
+
+    return active_tetrode
+
+
+def get_active_eeg(set_filename):
+    """This will return a dictionary (cative_eeg_dict) where the keys
+    will be eeg channels from 1->64 which will represent the eeg suffixes (2 = .eeg2, 3 = 2.eeg3, etc)
+    and the key will be the channel that the EEG maps to (a channel from 0->63)"""
+    active_eeg = []
+    active_eeg_str = 'saveEEG_ch'
+
+    eeg_map = []
+    eeg_map_str = 'EEG_ch_'
+
+    active_eeg_dict = {}
+
+    with open(set_filename) as f:
+        for line in f:
+
+            if active_eeg_str in line:
+                # saveEEG_ch_X Y, where x is the eeg number, and Y is eitehr on or off (1 or 0)
+                _, status = line.split(' ')
+                active_eeg.append(int(status))
+            elif eeg_map_str in line:
+                # EEG_ch_X Y
+                _, chan = line.split(' ')
+                eeg_map.append(int(chan))
+
+                # active_eeg = np.asarray(active_eeg)
+                # eeg_map = np.asarray(eeg_map)
+
+    for i, status in enumerate(active_eeg):
+        if status == 1:
+            active_eeg_dict[i + 1] = eeg_map[i] - 1
+
+    return active_eeg_dict
+
+
 def get_bin_data(bin_filename, channels=None, tetrode=None):
     """This function will be used to acquire the actual lfp data given the .bin filename,
     and the tetrode or channels (from 1-64) that you want to get"""
