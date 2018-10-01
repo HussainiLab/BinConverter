@@ -351,7 +351,10 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
             directory_item = QtGui.QTreeWidgetItem()
             directory_item.setText(0, directory)
 
-            self.sessions = self.FindSessions(os.path.join(self.directory, directory))
+            try:
+                self.sessions = self.FindSessions(os.path.join(self.directory, directory))
+            except FileNotFoundError:
+                return
 
             # add the sessions to the TreeWidget
             for session in self.sessions:
@@ -469,7 +472,6 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         directory_file_list = os.listdir(
             directory)  # making a list of all files within the specified directory
 
-
         set_filenames = []
 
         [set_filenames.append(file) for file in directory_file_list if
@@ -500,7 +502,7 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         self.directory_edit.setText(current_directory_name)
 
         self.LogAppend.myGUI_signal.emit(
-            '[%s %s]: Finding Intan Recording Sessions Within Chosen Directory!' %
+            '[%s %s]: Finding Raw Recording Sessions Within Chosen Directory!' %
             (str(datetime.datetime.now().date()),
              str(datetime.datetime.now().time())[:8]))
 

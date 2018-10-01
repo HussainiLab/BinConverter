@@ -24,11 +24,13 @@ def notch_filt(data, Fs, band=10, freq=60, ripple=1, order=2, filter_type='butte
     high = freq + band / 2.0
     low = low / nyq
     high = high / nyq
-    b, a = signal.iirfilter(order, [low, high], rp=ripple, btype='bandstop',
-                            analog=analog_filt, ftype=filter_type)
-    if data != []:
+    b, a = signal.iirfilter(order, [low, high], rp=ripple, btype='bandstop', analog=analog_filt, ftype=filter_type)
+
+    filtered_data = np.array([])
+
+    if len(data) != 0:
         if len(data.shape) > 1:  # lfilter is one dimensional so we need to perform for loop on multi-dimensional array
-            filtered_data = np.zeros((data.shape[0], data.shape[1]))
+            # filtered_data = np.zeros((data.shape[0], data.shape[1]))
             filtered_data = signal.filtfilt(b, a, data, axis=1)
             # for channel_num in range(0, data.shape[0]):
             # filtered_data[channel_num,:] = signal.lfilter(b, a, data[channel_num,:])
@@ -37,6 +39,7 @@ def notch_filt(data, Fs, band=10, freq=60, ripple=1, order=2, filter_type='butte
             # filtered_data = signal.lfilter(b, a, data)
             filtered_data = signal.filtfilt(b, a, data)
 
+    FType = ''
     if showresponse == 1:
         if filter_type == 'butter':
             FType = 'Butterworth'
@@ -54,7 +57,7 @@ def notch_filt(data, Fs, band=10, freq=60, ripple=1, order=2, filter_type='butte
         else:
             mode = 'Digital'
 
-        if analog_filt == False:
+        if analog_filt is False:
             w, h = signal.freqz(b, a, worN=8000)  # returns the requency response h, and the normalized angular
             # frequencies w in radians/sample
             # w (radians/sample) * Fs (samples/sec) * (1 cycle/2pi*radians) = Hz

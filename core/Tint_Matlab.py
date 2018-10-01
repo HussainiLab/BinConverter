@@ -63,10 +63,30 @@ class TintException(Exception):
 
 
 def get_setfile_parameter(parameter, set_filename):
+    """
+    This function will return the parameter value of a given parameter name for a given set filename.
+
+    Example:
+        set_fullpath = 'C:\\example\\tetrode_1.1'
+        parameter_name = 'duration
+        duration = get_setfile_parameter(parameter_name, set_fullpath)
+
+    Args:
+        parameter (str): the name of the set file parameter that you want to obtain.
+        set_filename (str): the full path of the .set file that you want to obtain the parameter value from.
+
+
+    Returns:
+        parameter_value (str): the value for the given parameter
+
+    """
+
     if not os.path.exists(set_filename):
         return
 
-    with open(set_filename, 'r+') as f:
+    # adding the encoding because tint data is created via windows and if you want to run this in linux, you need
+    # to explicitly say this
+    with open(set_filename, 'r+', encoding='cp1252') as f:
         for line in f:
             if parameter in line:
                 if line.split(' ')[0] == parameter:
@@ -203,11 +223,78 @@ def is_tetrode(file, session):
         return False
 
 
-def find_tet(set_fullpath):
-    '''finds the tetrode files available for a given .set file if there is a  .cut file existing'''
+def get_active_tetrode(set_filename):
+    """in the .set files it will say collectMask_X Y for each tetrode number to tell you if
+    it is active or not. T1 = ch1-ch4, T2 = ch5-ch8, etc."""
+    active_tetrode = []
+    active_tetrode_str = 'collectMask_'
 
-    tetrode_path, fname_set = os.path.split(set_fullpath)
-    fname_set, _ = os.path.splitext(fname_set)
+    with open(set_filename) as f:
+        for line in f:
+
+            # collectMask_X Y, where x is the tetrode number, and Y is eitehr on or off (1 or 0)
+            if active_tetrode_str in line:
+                tetrode_str, tetrode_status = line.split(' ')
+                if int(tetrode_status) == 1:
+                    # then the tetrode is saved
+                    tetrode_str.find('_')
+                    tet_number = int(tetrode_str[tetrode_str.find('_') + 1:])
+                    active_tetrode.append(tet_number)
+
+    return active_tetrode
+
+
+def get_active_eeg(set_filename):
+    """This will return a dictionary (cative_eeg_dict) where the keys
+    will be eeg channels from 1->64 which will represent the eeg suffixes (2 = .eeg2, 3 = 2.eeg3, etc)
+    and the key will be the channel that the EEG maps to (a channel from 0->63)"""
+    active_eeg = []
+    active_eeg_str = 'saveEEG_ch'
+
+    eeg_map = []
+    eeg_map_str = 'EEG_ch_'
+
+    active_eeg_dict = {}
+
+    with open(set_filename) as f:
+        for line in f:
+
+            if active_eeg_str in line:
+                # saveEEG_ch_X Y, where x is the eeg number, and Y is eitehr on or off (1 or 0)
+                _, status = line.split(' ')
+                active_eeg.append(int(status))
+            elif eeg_map_str in line:
+                # EEG_ch_X Y
+                _, chan = line.split(' ')
+                eeg_map.append(int(chan))
+
+                # active_eeg = np.asarray(active_eeg)
+                # eeg_map = np.asarray(eeg_map)
+
+    for i, status in enumerate(active_eeg):
+        if status == 1:
+            active_eeg_dict[i + 1] = eeg_map[i] - 1
+
+    return active_eeg_dict
+
+
+def is_egf_active(set_filename):
+    active_egf_str = 'saveEGF'
+
+    with open(set_filename) as f:
+        for line in f:
+
+            if active_egf_str in line:
+                _, egf_status = line.split(' ')
+
+                if int(egf_status) == 1:
+                    return True
+
+        return False
+
+
+def find_tet(set_fullpath):
+    """finds the tetrode files available for a given .set file if there is a  .cut file existing"""
 
     tetrode_path, fname_set = os.path.split(set_fullpath)
     fname_set, _ = os.path.splitext(fname_set)
@@ -535,6 +622,28 @@ def bits2uV(data, data_fpath, set_fpath=''):
 
 
 def getspikes(fullpath):
+    """
+    This function will return the spike data, spike times, and spike parameters from Tint tetrode data.
+
+    Example:
+        tetrode_fullpath = 'C:\\example\\tetrode_1.1'
+        ts, ch1, ch2, ch3, ch4, spikeparam = getspikes(tetrode_fullpath)
+
+    Args:
+        fullpath (str): the fullpath to the Tint tetrode file you want to acquire the spike data from.
+
+    Returns:
+        ts (ndarray): an Nx1 array for the spike times, where N is the number of spikes.
+        ch1 (ndarray) an NxM matrix containing the spike data for channel 1, N is the number of spikes,
+            and M is the chunk length.
+        ch2 (ndarray) an NxM matrix containing the spike data for channel 2, N is the number of spikes,
+            and M is the chunk length.
+        ch3 (ndarray) an NxM matrix containing the spike data for channel 3, N is the number of spikes,
+            and M is the chunk length.
+        ch4 (ndarray) an NxM matrix containing the spike data for channel 4, N is the number of spikes,
+            and M is the chunk length.
+        spikeparam (dict): a dictionary containing the header values from the tetrode file.
+    """
     spikes, spikeparam = importspikes(fullpath)
     ts = spikes['t']
     nspk = spikeparam['num_spikes']
