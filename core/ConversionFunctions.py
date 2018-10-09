@@ -530,8 +530,8 @@ def convert_basename(self, set_filename):
                 tetrode_thresholds.append(standard_deviations * sigma_n)
 
             # threshold = int(17152)
-            threshold = int(16640)
-            tetrode_thresholds = [threshold, threshold, threshold, threshold]
+            # threshold = int(16640)
+            # tetrode_thresholds = [threshold, threshold, threshold, threshold]
 
             valid_spikes = get_spikes(data, tetrode_thresholds)
 
