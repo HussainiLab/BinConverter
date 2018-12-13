@@ -62,6 +62,31 @@ class TintException(Exception):
         self.message = message
 
 
+def get_good_cells(units):
+    """
+    In Tint we have a method of determining the 'good cells'. A good tetrode must begin
+    with cell #1, and the set of consecutive cell numberes are all good. Essentially we leave
+    a blank cell separating the good cells from the bad. This function will return the good cells.
+    """
+    units = np.unique(units)
+
+    if 1 not in units:
+        return np.array([])
+
+    good_cells = [1]
+
+    found_separation = False
+    for index, unit in enumerate(units):
+        if unit > 1:
+            if unit == units[index - 1] + 1 and not found_separation:
+                good_cells.append(unit)
+            else:  #
+                # no longer consecutive units, so set value to false to ensure no more appending
+                found_separation = True
+
+    return np.asarray(good_cells)
+
+
 def get_setfile_parameter(parameter, set_filename):
     """
     This function will return the parameter value of a given parameter name for a given set filename.
@@ -98,7 +123,7 @@ def get_setfile_parameter(parameter, set_filename):
                         return ' '.join(new_line[1:])
 
 
-def getpos(pos_fpath, arena, method=''):
+def getpos(pos_fpath, arena, method='', flip_y=True):
     '''getpos function:
     ---------------------------------------------
     variables:
@@ -200,7 +225,8 @@ def getpos(pos_fpath, arena, method=''):
         t = t - t[0]
 
         x, y = arena_config(x, y, arena, conversion=ppm, center=np.asarray([np.mean([min_x, max_x]),
-                                                                            np.mean([min_y, max_y])]))
+                                                                            np.mean([min_y, max_y])]),
+                            flip_y=flip_y)
 
         # remove any NaNs at the end of the file
         x, y, t = removeNan(x, y, t)
@@ -349,7 +375,17 @@ def find_unit(tetrode_path, tetrode_list):
     return np.asarray(cut_list), np.asarray(unique_cell_list)
 
 
-def arena_config(posx, posy, arena, conversion='', center=''):
+def arena_config(posx, posy, arena, conversion='', center='', flip_y=True):
+    """
+    :param posx:
+    :param posy:
+    :param arena:
+    :param conversion:
+    :param center:
+    :param flip_y: bool value that will determine if you want to flip y or not. When recording on Intan we inverted the
+    positions due to the camera position. However in the virtualmaze you might not want to flip y values.
+    :return:
+    """
     if 'BehaviorRoom' in arena:
         center = np.array([314.75, 390.5])
         conversion = 495.5234
@@ -359,14 +395,16 @@ def arena_config(posx, posy, arena, conversion='', center=''):
     elif 'room4' in arena:
         center = np.array([418, 186])
         conversion = 313
-    elif arena in ['Circular Track', 'Four Leaf Clover Track', 'Simple Circular Track']:
+    elif arena in ['Linear Track', 'Circular Track', 'Four Leaf Clover Track', 'Simple Circular Track']:
         center = center
         conversion = conversion
     else:
         print("Room: " + arena + ", is an unknown room!")
 
     posx = 100 * (posx - center[0]) / conversion
-    posy = 100 * (-posy + center[1]) / conversion
+
+    if flip_y:
+        posy = 100 * (-posy + center[1]) / conversion
 
     return posx, posy
 
