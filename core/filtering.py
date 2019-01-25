@@ -82,43 +82,7 @@ def notch_filt(data, Fs, band=10, freq=60, ripple=1, order=2, filter_type='butte
     return filtered_data
 
 
-def iirfilt(bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=0, Rp=3, As=60, filttype='butter',
-            showresponse=0):
-    '''Designs butterworth filter:
-    Data is the data that you want filtered
-    Fs is the sampling frequency (in Hz)
-    Ws and Wp are stop and pass frequencies respectively (in Hz)
-
-    Passband (Wp) : This is the frequency range which we desire to let the signal through with minimal attenuation.
-    Stopband (Ws) : This is the frequency range which the signal should be attenuated.
-
-    Digital: Ws is the normalized stop frequency where 1 is the nyquist freq (pi radians/sample in digital)
-             Wp is the normalized pass frequency
-
-    Analog: Ws is the stop frequency in (rads/sec)
-            Wp is the pass frequency in (rads/sec)
-
-    Analog is false as default, automatic being one has Python select the order for you. pass_atten is the minimal attenuation
-    the pass band, stop_atten is the minimal attenuation in the stop band. Fs is the sample frequency of the signal in Hz.
-
-    Rp = 0.1      # passband maximum loss (gpass)
-    As = 60 stoppand min attenuation (gstop)
-
-
-    filttype : str, optional
-        The type of IIR filter to design:
-        Butterworth : ‘butter’
-        Chebyshev I : ‘cheby1’
-        Chebyshev II : ‘cheby2’
-        Cauer/elliptic: ‘ellip’
-        Bessel/Thomson: ‘bessel’
-
-    bandtype : {‘bandpass’, ‘lowpass’, ‘highpass’, ‘bandstop’}, optional
-    '''
-
-    cutoff = Wp
-    if Ws != []:
-        cutoff2 = Ws
+def get_a_b(bandtype, Fs, Wp, Ws, order=3, Rp=3, As=60, analog_val=False, filttype='butter', automatic=0):
 
     stop_amp = 1.5
     stop_amp2 = 1.4
@@ -169,16 +133,56 @@ def iirfilt(bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=
             else:
                 b, a = signal.iirfilter(order, [Wp, Ws], btype=bandtype, analog=analog_val, ftype=filttype)
 
-    if data != []:
+    return b, a
+
+
+def iirfilt(bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=0, Rp=3, As=60, filttype='butter',
+            showresponse=0):
+    '''Designs butterworth filter:
+    Data is the data that you want filtered
+    Fs is the sampling frequency (in Hz)
+    Ws and Wp are stop and pass frequencies respectively (in Hz)
+
+    Passband (Wp) : This is the frequency range which we desire to let the signal through with minimal attenuation.
+    Stopband (Ws) : This is the frequency range which the signal should be attenuated.
+
+    Digital: Ws is the normalized stop frequency where 1 is the nyquist freq (pi radians/sample in digital)
+             Wp is the normalized pass frequency
+
+    Analog: Ws is the stop frequency in (rads/sec)
+            Wp is the pass frequency in (rads/sec)
+
+    Analog is false as default, automatic being one has Python select the order for you. pass_atten is the minimal attenuation
+    the pass band, stop_atten is the minimal attenuation in the stop band. Fs is the sample frequency of the signal in Hz.
+
+    Rp = 0.1      # passband maximum loss (gpass)
+    As = 60 stoppand min attenuation (gstop)
+
+
+    filttype : str, optional
+        The type of IIR filter to design:
+        Butterworth : ‘butter’
+        Chebyshev I : ‘cheby1’
+        Chebyshev II : ‘cheby2’
+        Cauer/elliptic: ‘ellip’
+        Bessel/Thomson: ‘bessel’
+
+    bandtype : {‘bandpass’, ‘lowpass’, ‘highpass’, ‘bandstop’}, optional
+    '''
+
+    cutoff = Wp
+
+    if Ws != []:
+        cutoff2 = Ws
+
+    b, a = get_a_b(bandtype, Fs, Wp, Ws, order=order, Rp=Rp, As=As, analog_val=analog_val, filttype=filttype,
+                   automatic=automatic)
+    if len(data) != 0:
         if len(data.shape) > 1:
-            #print('Filtering multidimensional array!')
+
             filtered_data = np.zeros((data.shape[0], data.shape[1]))
             filtered_data = signal.filtfilt(b, a, data, axis=1)
-            #for channel_num in range(0, data.shape[0]):
-            #    # filtered_data[channel_num,:] = signal.lfilter(b, a, data[channel_num,:])
-            #    filtered_data[channel_num, :] = signal.filtfilt(b, a, data[channel_num, :])
         else:
-            # filtered_data = signal.lfilter(b, a, data)
             filtered_data = signal.filtfilt(b, a, data)
 
     if showresponse == 1:  # set to 1 if you want to visualize the frequency response of the filter
@@ -210,7 +214,6 @@ def iirfilt(bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=
             f = w / (2 * np.pi)  # Hz
 
         plt.figure(figsize=(10, 5))
-        #plt.subplot(211)
         plt.semilogx(f, np.abs(h), 'b')
         plt.xscale('log')
 
@@ -230,7 +233,7 @@ def iirfilt(bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=
             plt.axvline(cutoff2, color='green')
             # plt.plot(cutoff, 0.5*np.sqrt(2), 'ko') # cutoff frequency
         plt.show()
-    if data != []:
+    if len(data) != 0:
         return filtered_data
 
 

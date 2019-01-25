@@ -71,31 +71,6 @@ def uV2bits(data, gain, ADC_Fullscale=1500, mode='8bit'):
     return data
 
 
-def find_consec(data):
-    '''finds the consecutive numbers and outputs as a list'''
-    consecutive_values = []  # a list for the output
-    current_consecutive = [data[0]]
-
-    if len(data) == 1:
-        return [[data[0]]]
-
-    for index in range(1, len(data)):
-
-        if data[index] == data[index - 1] + 1:
-            current_consecutive.append(data[index])
-
-            if index == len(data) - 1:
-                consecutive_values.append(current_consecutive)
-
-        else:
-            consecutive_values.append(current_consecutive)
-            current_consecutive = [data[index]]
-
-            if index == len(data) - 1:
-                consecutive_values.append(current_consecutive)
-    return consecutive_values
-
-
 def write_eeg(filepath, data, Fs):
 
     data = data.flatten()
@@ -476,23 +451,6 @@ def convert_basename(self, set_filename):
         t = np.arange(0, n_samples) / Fs  # creates a time array of the signal starting from 0 (in seconds)
 
         if not os.path.exists(tetrode_filename):
-            '''
-            # --------------------------------Notch Filter if necessary --------------------------------------
-
-            # Applying Notch Filter
-
-            # ---------------------------Band Pass Filter the Unit Data --------------------------------------
-
-            self.LogAppend.myGUI_signal.emit(
-                '[%s %s]: High Pass Filtering the Spike Data for T%d!' %
-                (str(datetime.datetime.now().date()),
-                 str(datetime.datetime.now().time())[:8], tetrode))
-
-            #data = filt.iirfilt(bandtype='band', data=data, Fs=Fs, Wp=300, Ws=7000, order=3, automatic=0,
-            #                              Rp=0.1, As=60, filttype='butter', showresponse=0)
-
-            # data = filt.custom_cheby1(data, Fs, 3, 0.1, 300, Ws=7e3, filtresponse='bandpass')
-            '''
 
             # ---------------------------Find the spikes in the unit data --------------------------------------
 
@@ -620,14 +578,6 @@ def convert_basename(self, set_filename):
             # load data
             EEG = get_bin_data(bin_filename, channels=[channel])
 
-            '''
-            # append zeros to make the duration a round number
-            duration = np.ceil(EEG.shape[1] / Fs)  # the duration should be rounded up to the nearest integer
-            missing_samples = int(duration * Fs - EEG.shape[1])
-            if missing_samples != 0:
-                missing_samples = np.tile(np.array([0]), (1, missing_samples))
-                EEG = np.hstack((EEG, missing_samples))
-            '''
             create_eeg(eeg_filename, EEG, Fs, DC_Blocker=self.dc_blocker.isChecked())
             # EEG = None
 
@@ -650,15 +600,6 @@ def convert_basename(self, set_filename):
 
                 # then the EEG hasn't been read in (EEG was already created), read the data
                 EGF = get_bin_data(bin_filename, channels=[channel])
-
-                '''
-                # append zeros to make the duration a round number
-                duration = np.ceil(EGF.shape[1] / Fs)
-                missing_samples = int(duration * Fs - EGF.shape[1])
-                if missing_samples != 0:
-                    missing_samples = np.tile(np.array([0]), (1, missing_samples))
-                    EGF = np.hstack((EGF, missing_samples))
-                '''
 
                 create_egf(egf_filename, EGF, Fs, DC_Blocker=self.dc_blocker.isChecked())
                 EGF = None
@@ -944,49 +885,6 @@ def has_files(set_filename):
         return True
 
     return False
-
-
-'''
-def get_lfp_bytes(iterations):
-    """This function works, but the strategy I use didn't. I was going to slice the bytearray like you would
-    a numpy array but that didn't work"""
-    data_byte_len = 384
-    indices = np.arange(data_byte_len)
-    indices = np.tile(indices, (1, iterations))
-    indices = indices.flatten()
-
-    offset_indices = np.arange(iterations)
-    offset_indices = offset_indices * 432 + 32
-    offset_indices = np.tile(offset_indices, (384, 1))
-    offset_indices = offset_indices.flatten(order='F')
-
-    return indices + offset_indices
-
-
-def get_lfp_indices(iterations):
-    data_byte_len = 192
-    indices = np.arange(data_byte_len)
-    indices = np.tile(indices, (1, iterations))
-    indices = indices.flatten()
-
-    offset_indices = np.arange(iterations)
-    offset_indices = offset_indices * 213 + 13
-    offset_indices = np.tile(offset_indices, (192, 1))
-    offset_indices = offset_indices.flatten(order='F')
-
-    return indices + offset_indices
-
-
-def get_channel_bytes(channel_number, samples):
-    """This will get the indices of the data if it is just the lfp data (not the bytes header bytes or trailing bytes)"""
-    remap_channel = get_remap_chan(channel_number)
-
-    indices_scalar = np.multiply(np.arange(samples), 64)
-    sample_indices = indices_scalar + np.multiply(np.ones(samples), remap_channel)
-
-    # return np.array([remap_channel, 64 + remap_channel, 64*2 + remap_channel])
-    return (indices_scalar + np.multiply(np.ones(samples), remap_channel)).astype(int)
-'''
 
 
 def get_Fs(set_filename):
