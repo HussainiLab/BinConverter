@@ -237,8 +237,6 @@ def write_tetrode(filepath, data, Fs):
 
     header = get_set_header(set_filename)
 
-    [write_order.append(bytes('%s\n' % value, 'utf-8')) for value in header.split('\n') if value != '']
-
     with open(filepath, 'w') as f:
         num_chans = 'num_chans 4'
         timebase_head = '\ntimebase %d hz' % (96000)
@@ -260,13 +258,10 @@ def write_tetrode(filepath, data, Fs):
 
     # rearranging the data to have a flat array of t1, waveform1, t2, waveform2, t3, waveform3, etc....
     spike_times = np.asarray(sorted(data.keys()))
-    #print(spike_times.shape)
-    #print(spike_times[:50])
-    # the spike times are repeated for each channel so lets tile this
-    spike_times = np.tile(spike_times, (4,1))
-    spike_times = spike_times.flatten(order='F')
 
-    #print(spike_times[:50])
+    # the spike times are repeated for each channel so lets tile this
+    spike_times = np.tile(spike_times, (4, 1))
+    spike_times = spike_times.flatten(order='F')
 
     spike_values = np.asarray([value for (key, value) in sorted(data.items())])
 
@@ -285,7 +280,6 @@ def write_tetrode(filepath, data, Fs):
     spike_values = spike_values.reshape((n * 4, 50))  # create the 4nx50 channel data matrix
 
     # make the first column the time values
-
     spike_array = np.hstack((spike_times.reshape(len(spike_times), 1), spike_values))
 
     data = None
@@ -294,18 +288,6 @@ def write_tetrode(filepath, data, Fs):
 
     spike_n = spike_array.shape[0]
 
-    '''
-    with open(filepath, 'rb+') as f:
-        for spike_t, spike_data in sorted(data.items()):
-            write_list = []
-            for i in range(spike_data.shape[0]):
-                write_list.append(struct.pack('>i', int(spike_t)))
-                write_list.append(struct.pack('<%db' % (50),
-                                              *[int(sample) for sample in spike_data[i, :].tolist()]))
-
-            f.seek(0, 2)
-            f.writelines(write_list)
-    '''
     t_packed = struct.pack('>%di' % spike_n, *spike_array[:, 0].astype(int))
     spike_array = spike_array[:, 1:]  # removing time data from this matrix to save memory
 
@@ -332,12 +314,6 @@ def write_tetrode(filepath, data, Fs):
 
         f.seek(0, 2)
         f.writelines(write_order)
-
-    '''
-    with open(filepath, 'rb+') as f:
-        f.seek(0, 2)
-        f.write(bytes('\r\ndata_end\r\n', 'utf-8'))
-    '''
 
 
 def convert_basename(self, set_filename):

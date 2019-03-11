@@ -224,8 +224,8 @@ def getpos(pos_fpath, arena, method='', flip_y=True):
 
         t = t - t[0]
 
-        x, y = arena_config(x, y, arena, conversion=ppm, center=np.asarray([np.mean([min_x, max_x]),
-                                                                            np.mean([min_y, max_y])]),
+        x, y = arena_config(x, y, arena, conversion=ppm, center=np.asarray([np.mean([np.amin(x), np.amax(x)]),
+                                                                            np.mean([np.amin(y), np.amax(y)])]),
                             flip_y=flip_y)
 
         # remove any NaNs at the end of the file
@@ -395,7 +395,8 @@ def arena_config(posx, posy, arena, conversion='', center='', flip_y=True):
     elif 'room4' in arena:
         center = np.array([418, 186])
         conversion = 313
-    elif arena in ['Linear Track', 'Circular Track', 'Four Leaf Clover Track', 'Simple Circular Track']:
+    elif arena in ['Linear Track', 'Circular Track', 'Four Leaf Clover Track', 'Simple Circular Track',
+                   'Parallel Linear Global Track', 'Parallel Linear Rate Track']:
         center = center
         conversion = conversion
     else:
