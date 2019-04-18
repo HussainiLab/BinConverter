@@ -1,7 +1,6 @@
 from __future__ import division, print_function
 import numpy as np
 import struct, os
-# import matplotlib.pyplot as plt
 import numpy.matlib
 from scipy.io import savemat
 import mmap
@@ -238,7 +237,10 @@ def getpos(pos_fpath, arena, method='', flip_y=True):
 
 
 def is_tetrode(file, session):
-
+    """"
+    Determines if the file is a tetrode, essentially will look at the extension and see if it ends in an integer
+    or not. Also checks that the tetrode belongs to a given session.
+    """
     if os.path.splitext(file)[0] == session:
         try:
             tetrode_number = int(os.path.splitext(file)[1][1:])
@@ -319,49 +321,68 @@ def is_egf_active(set_filename):
         return False
 
 
-def find_tet(set_fullpath):
+def find_tetrodes(set_fullpath):
     """finds the tetrode files available for a given .set file if there is a  .cut file existing"""
 
-    tetrode_path, fname_set = os.path.split(set_fullpath)
-    fname_set, _ = os.path.splitext(fname_set)
+    tetrode_path, session = os.path.split(set_fullpath)
+    session, _ = os.path.splitext(session)
 
     # getting all the files in that directory
     file_list = os.listdir(tetrode_path)
 
     # acquiring only a list of tetrodes that belong to that set file
     tetrode_list = [os.path.join(tetrode_path, file) for file in file_list
-                    if is_tetrode(file, fname_set)]
+                    if is_tetrode(file, session)]
 
     # if the .cut file doesn't exist remove list
-    tetrode_list = [file for file in tetrode_list if os.path.exists(os.path.join(tetrode_path,
-                                                                                 ''.join([os.path.splitext(
-                                                                                     os.path.basename(file))[0],
-                                                                                          '_',
-                                                                                          os.path.splitext(file)[1][1:],
-                                                                                          '.cut'])))]
 
-    return tetrode_path, tetrode_list
+    tetrode_list = [file for file in tetrode_list if os.path.exists(
+        os.path.join(tetrode_path, '%s_%s.cut' % (os.path.splitext(file)[0], os.path.splitext(file)[1][1:])))]
+
+    return tetrode_list
 
 
-def find_unit(tetrode_path, tetrode_list):
+def find_unit(tetrode_list):
     """Inputs:
-    tetrode_path: the path of the tetrode (not including the filename and extension)
-    example: C:Location\of\File\filename.ext
-
     tetrode_list: list of tetrodes to find the units that are in the tetrode_path
-    example [1,2,3], will check just the first 3 tetrodes
+    example [r'C:Location\of\File\filename.1', r'C:Location\of\File\filename.2' ],
     -------------------------------------------------------------
     Outputs:
     cut_list: an nx1 list for n-tetrodes in the tetrode_list containing a list of unit numbers that each spike belongs to
-    unique_cell_list: an nx1 list for n-tetrodes in the tetrode list containing a list of unique unit numbers"""
+    """
+
+    input_list = True
+    if type(tetrode_list) != list:
+        input_list = False
+        tetrode_list = [tetrode_list]
 
     cut_list = []
     unique_cell_list = []
-    for tet_file in tetrode_list:
-        cut_fname = os.path.join(tetrode_path, ''.join([os.path.splitext(os.path.basename(tet_file))[0],
-                                                        '_', os.path.splitext(tet_file)[1][1:], '.cut']))
+    for tetrode_file in tetrode_list:
+        directory = os.path.dirname(tetrode_file)
+
+        try:
+            tetrode = int(os.path.splitext(tetrode_file)[1][1:])
+        except ValueError:
+            raise ValueError("The following file is invalid: %s" % tetrode_file)
+
+        tetrode_base = os.path.splitext(os.path.basename(tetrode_file))[0]
+
+        cut_filename = os.path.join(directory, '%s_%d.cut' % (tetrode_base, tetrode))
+
+        cut_values = read_cut(cut_filename)
+        cut_list.append(cut_values)
+        unique_cell_list.append(np.unique(cut_values))
+
+    return cut_list
+
+
+def read_cut(cut_filename):
+    """This function will read the given cut file, and output the """
+    cut_values = None
+    if os.path.exists(cut_filename):
         extract_cut = False
-        with open(cut_fname, 'r') as f:
+        with open(cut_filename, 'r') as f:
             for line in f:
                 if 'Exact_cut' in line:  # finding the beginning of the cut values
                     extract_cut = True
@@ -370,9 +391,8 @@ def find_unit(tetrode_path, tetrode_list):
                     for string_val in ['\\n', ',', "'", '[', ']']:  # removing non base10 integer values
                         cut_values = cut_values.replace(string_val, '')
                     cut_values = [int(val) for val in cut_values.split()]
-                    cut_list.append(cut_values)
-                    unique_cell_list.append(list(set(cut_values)))
-    return np.asarray(cut_list), np.asarray(unique_cell_list)
+        cut_values = np.asarray(cut_values)
+    return cut_values
 
 
 def arena_config(posx, posy, arena, conversion='', center='', flip_y=True):
@@ -408,60 +428,6 @@ def arena_config(posx, posy, arena, conversion='', center='', flip_y=True):
         posy = 100 * (-posy + center[1]) / conversion
 
     return posx, posy
-
-
-def ReadEEGOld(eeg_fname):
-    """input:
-    eeg_filename: the fullpath to the eeg file that is desired to be read.
-    Example: C:\Location\of\eegfile.eegX
-
-    Output:
-    The EEG waveform, and the sampling frequency"""
-
-    with open(eeg_fname, 'rb') as f:
-
-        for line in f:
-            # print(line)
-            if 'sample_rate' in str(line):
-                # cant convert a string w/ a float directly to an integer
-                Fs = int(float(line.decode(encoding='UTF-8').split(" ")[1]))
-            elif 'data_start' in str(line):
-                break
-            elif 'num_EEG_samples' in str(line) or 'num_EGF_samples' in str(line):
-                num_samples = int(line.decode(encoding='UTF-8').split(" ")[1])
-            else:
-                pass
-
-        # f.seek(len('data_start'), 1) # move to the position after the data_start
-        EEG_original = line + f.read()
-        # remove the data_start and \r\ndata_end\r\n from the data
-        EEG = EEG_original[len('data_start'):-len('\r\ndata_end\r\n')]
-
-        # each datum in the EEG file is 1 byte long, but two bytes long in the EGF
-        if '.eeg' in eeg_fname:
-
-            if len(EEG) != num_samples:
-                print("The number of samples received does not matcFh the number recorded" +
-                      "in the header")
-                if EEG_original[len('data_start'):] == num_samples:
-                    EEG = EEG_original[len('data_start'):]  # maybe there is no data_end
-            EEG_original = []
-
-            EEG = np.asarray(struct.unpack('>%db' % (num_samples), EEG))
-        elif '.egf' in eeg_fname:
-
-            if len(EEG) != 2 * num_samples:
-                print("The number of samples received does not match the number recorded" +
-                      "in the header")
-                if EEG_original[len('data_start'):] == 2 * num_samples:
-                    EEG = EEG_original[len('data_start'):]  # maybe there is no data_end
-            EEG_original = []
-
-            EEG = np.asarray(struct.unpack('<%dh' % (num_samples), EEG))
-        else:
-            return [], []
-
-    return EEG, Fs
 
 
 def ReadEEG(eeg_fname):
@@ -526,8 +492,8 @@ def removeNan(posx, posy, post):
 
 def centerBox(posx, posy):
     # must remove Nans first because the np.amin will return nan if there is a nan
-    posx = posx[np.isnan(posx) == False]  # removes NaNs
-    posy = posy[np.isnan(posy) == False]  # remove Nans
+    posx = posx[~np.isnan(posx)]  # removes NaNs
+    posy = posy[~np.isnan(posy)]  # remove Nans
 
     NE = np.array([np.amax(posx), np.amax(posy)])
     NW = np.array([np.amin(posx), np.amax(posy)])
@@ -538,12 +504,10 @@ def centerBox(posx, posy):
 
 
 def findCenter(NE, NW, SW, SE):
-    a = (NE[1] - SW[1]) / (NE[0] - SW[0])
-    b = (SE[1] - NW[1]) / (SE[0] - NW[0])
-    c = SW[1]
-    d = NW[1]
-    x = (d - c + a * SW[0] - b * NW[0]) / (a - b)
-    y = a * (x - SW[0]) + c
+    """Finds the center point (x,y) of the position boundaries"""
+
+    x = np.mean([np.amax([NE[0], SE[0]]), np.amin([NW[0], SW[0]])])
+    y = np.mean([np.amax([NW[1], NE[1]]), np.amin([SW[1], SE[1]])])
     return np.array([x, y])
 
 
