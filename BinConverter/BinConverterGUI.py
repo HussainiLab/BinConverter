@@ -19,7 +19,8 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
 
         self.setWindowTitle("%s - Main Window" % project_name)
 
-        self.current_session = ''
+        # self.current_session = None
+        self.current_subdirectory = None
         self.directory_changed = False
         self.modifying_list = False
         self.reset_add_thread = False
@@ -192,6 +193,22 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         self.RepeatAddSessionsWorker.moveToThread(self.RepeatAddSessionsThread)
         self.RepeatAddSessionsWorker.start.emit("start")
 
+    def restart_add_sessions_thread(self):
+
+        self.reset_add_thread = True
+        if not hasattr(self, 'repeat_thread_active'):
+            return
+
+        while self.repeat_thread_active:
+            time.sleep(0.1)
+
+        self.RepeatAddSessionsThread.setTerminationEnabled(True)
+        self.RepeatAddSessionsThread.start()
+
+        self.RepeatAddSessionsWorker = Worker(RepeatAddSessions, self)
+        self.RepeatAddSessionsWorker.moveToThread(self.RepeatAddSessionsThread)
+        self.RepeatAddSessionsWorker.start.emit("start")
+
     def set_batch_tint_settings(self):
         """This method will be used for the Batch Tint Settings window.
         It will define the window, as well as raise the window if it is already defined"""
@@ -308,7 +325,8 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
 
     def Convert(self):
         self.choice = None
-        self.current_session = ''
+        # self.current_session = None
+        self.current_subdirectory = None
         self.parameters = self.get_paramters()
 
         self.convert_button.setText('Stop Conversion')
@@ -328,7 +346,7 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
 
     def convert_queue(self):
 
-        if 'Choose a Directory' in self.directory_edit.text():
+        if default_filename in self.directory_edit.text():
             self.LogError.myGUI_signal.emit('NoDir')
             self.StopConversion()
             return
@@ -352,7 +370,8 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
                         time.sleep(0.1)
                     continue
 
-            ConvertSession(self, self.session_item.data(0, 0), self.parameters)
+            self.current_subdirectory = sessionpath
+            ConvertSession(self.session_item.data(0, 0), self.parameters, self)
 
     def StopConversion(self):
         self.convert_button.setText('Convert')
@@ -382,7 +401,6 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
 
         # change the line-edit that contains the directory information
         self.directory_edit.setText(current_directory_name)
-
 
     def new_file(self):
         '''
@@ -466,10 +484,11 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         self.child_removed = True
 
 
-def ConvertSession(main_window, directory, parameters):
+def ConvertSession(directory, parameters, self=None):
 
     if default_filename in directory:
-        main_window.LogError.myGUI_signal.emit('NoDir')
+        if self is None:
+            self.LogError.myGUI_signal.emit('NoDir')
 
     """This function will take in a session files and then convert the files associated with this session"""
 
@@ -477,59 +496,55 @@ def ConvertSession(main_window, directory, parameters):
     # ------------------Concatenates all the LFP/time data for each session---------------------------
     ##################################################################################################
 
-    # tint_basename = os.path.basename(os.path.splitext(sorted(session_files, reverse=False)[0])[0])
-    # current_session = directory
-
-    main_window.current_session = directory
+    # main_window.current_session = directory
 
     session_aborted = False
 
     # remove the appropriate session from the TreeWidget
-    iterator = QtWidgets.QTreeWidgetItemIterator(main_window.recording_queue)
+    iterator = QtWidgets.QTreeWidgetItemIterator(self.recording_queue)
     item_found = False
     # loops through the tree to see if the session is already there
 
     while iterator.value() and not item_found:
-        main_window.item = iterator.value()
+        self.item = iterator.value()
 
-        if main_window.item.data(0, 0) == directory:
-            for item_count in range(main_window.recording_queue.topLevelItemCount()):
-                if main_window.item == main_window.recording_queue.topLevelItem(item_count):
-                    # main_window.item = main_window.recording_queue.takeTopLevelItem(item_count)
+        if self.item.data(0, 0) == directory:
+            for item_count in range(self.recording_queue.topLevelItemCount()):
+                if self.item == self.recording_queue.topLevelItem(item_count):
                     item_found = True
 
                     # adding the .set files to a list of session_files
                     tint_basenames = []
-                    for child_count in range(main_window.item.childCount()):
-                        tint_basenames.append(main_window.item.child(child_count).data(0, 0))
+                    for child_count in range(self.item.childCount()):
+                        tint_basenames.append(self.item.child(child_count).data(0, 0))
                     break
         else:
             iterator += 1
 
     for child_index, basename in enumerate(tint_basenames):
 
-        if main_window.item.child(0).data(0, 0) == basename:
-            main_window.child_set = False
-            main_window.SetSessionItem.myGUI_signal.emit(str(0))
-            while not main_window.child_set:
+        if self.item.child(0).data(0, 0) == basename:
+            self.child_set = False
+            self.SetSessionItem.myGUI_signal.emit(str(0))
+            while not self.child_set:
                 time.sleep(0.1)
 
-            for child_count in range(main_window.child_session.childCount()):
-                set_fname = main_window.child_session.child(child_count).data(0, 0)
+            for child_count in range(self.child_session.childCount()):
+                set_fname = self.child_session.child(child_count).data(0, 0)
 
-        set_filename = os.path.join(main_window.directory_edit.text(), directory, set_fname)
-        converted = convert_basename(main_window, set_filename)
+        set_filename = os.path.join(self.directory_edit.text(), directory, set_fname)
+        converted = convert_basename(self, set_filename)
 
-        main_window.child_taken = False
-        main_window.RemoveSessionItem.myGUI_signal.emit(str(0))
-        while not main_window.child_taken:
+        self.child_taken = False
+        self.RemoveSessionItem.myGUI_signal.emit(str(0))
+        while not self.child_taken:
             time.sleep(0.1)
-        main_window.child_session = None
+        self.child_session = None
 
-        if main_window.item.childCount() == 0:
-            main_window.top_level_taken = False
-            main_window.RemoveQueueItem.myGUI_signal.emit(str(item_count))
-            while not main_window.top_level_taken:
+        if self.item.childCount() == 0:
+            self.top_level_taken = False
+            self.RemoveQueueItem.myGUI_signal.emit(str(item_count))
+            while not self.top_level_taken:
                 time.sleep(0.1)
 
         if isinstance(converted, str):
@@ -542,11 +557,11 @@ def ConvertSession(main_window, directory, parameters):
     if session_aborted:
         return
 
-    if main_window.batch_tint_checkbox.isChecked():
+    if self.batch_tint_checkbox.isChecked():
         # if batch-tint is checked, don't move to converted, just convert run batchtint here
 
         # import the settings values
-        with open(main_window.batch_tint_settings_window.settings_fname, 'r') as f:
+        with open(self.batch_tint_settings_window.settings_fname, 'r') as f:
             settings = json.load(f)
 
         smtp_settings = {}
@@ -568,17 +583,17 @@ def ConvertSession(main_window, directory, parameters):
         analyzed_set_files = klusta([set_filename], settings,
                                     smtp_settings=smtp_settings,
                                     experimenter_settings=experimenter_settings,
-                                    append=None, self=main_window)
+                                    append=None, self=self)
 
         x = 1
 
     else:
         # move to the converted file
-        convert_fpath = os.path.join(main_window.directory_edit.text(), 'Converted')
+        convert_fpath = os.path.join(self.directory_edit.text(), 'Converted')
         if not os.path.exists(convert_fpath):
             os.mkdir(convert_fpath)
 
-        directory_source = os.path.join(main_window.directory_edit.text(), directory)
+        directory_source = os.path.join(self.directory_edit.text(), directory)
         directory_destination = os.path.join(convert_fpath, directory)
 
         if os.path.exists(directory_destination):
@@ -589,7 +604,7 @@ def ConvertSession(main_window, directory, parameters):
             try:
                 shutil.rmtree(directory_source)
             except PermissionError:
-                main_window.LogAppend.myGUI_signal.emit(
+                self.LogAppend.myGUI_signal.emit(
                     '[%s %s]: The following directory could not be deleted, close files and then delete the directory.' %
                     (str(datetime.datetime.now().date()),
                      str(datetime.datetime.now().time())[:8]))
