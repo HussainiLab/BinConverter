@@ -1,33 +1,35 @@
-import sys, os
-from cx_Freeze import setup, Executable
+import setuptools
 
-# Dependencies are automatically detected, but it might need fine tuning.
-#build_exe_options = {"packages": ["os"], "excludes": ["tkinter"]}
+with open("README.md", "r") as fh:
+    long_description = fh.read()
 
-# GUI applications require a different base on Windows (the default is for a
-# console application).
-base = None
-if sys.platform == "win32":
-    base = "Win32GUI"
+pkgs = setuptools.find_packages()
+print('found these packages:', pkgs)
 
-additional_imports = ['numpy.core._methods', 'numpy.lib.format', "matplotlib.backends.backend_tkagg",
-                      'scipy.spatial', 'tkinter']
-                      #'TKinter', 'six']
+pkg_name = "BinConverter"
 
-packages = ['matplotlib', 'scipy', 'scipy.spatial', 'tkinter']
-
-
-include_files = [r"C:\Python34\DLLs\tcl86t.dll",
-                 r"C:\Python34\DLLs\tk86t.dll"]
-
-os.environ['TCL_LIBRARY'] = r'C:\Python34\tcl\tcl8.6'
-os.environ['TK_LIBRARY'] = r'C:\Python34\tcl\tk8.6'
-
-setup(name="BinConverterGUI",
-      version="1.0",
-      description="BinConverterGUI converts the raw .bin files produced by DacqUSB to the normal Tint format." +
-      "This will allow the user to select a threshold to use retroactively.",
-      options={"build_exe": {'packages': packages,
-                             "include_files": include_files,
-                             'includes': additional_imports}},
-      executables=[Executable("BinConverterGUI.py", base=base)])
+setuptools.setup(
+    name=pkg_name,
+    version="1.0.0",
+    author="Geoffrey Barrett",
+    author_email="geoffrey.m.barrett@gmail.com",
+    description="BinConverter - GUI that will allow the user to convert the raw (.bin) files from Axona's " +
+                "Tint software to their normal Tint format",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/HussainiLab/BinConverter.git",
+    packages=pkgs,
+    install_requires=
+    [
+        'PyQt5',
+        'BatchTINTV3',
+        'numpy',
+        'scipy'
+    ],
+    package_data={'BinConverter': ['img/*.png']},
+    classifiers=[
+        "Programming Language :: Python :: 3.7 ",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3) ",
+        "Operating System :: OS Independent",
+    ],
+)

@@ -1,319 +1,12 @@
-import struct, scipy, datetime, os, time
-from PyQt4 import QtGui
+import datetime, os, time
+from PyQt5 import QtWidgets
 import numpy as np
-from scipy import signal
-# from scipy.interpolate import InterpolatedUnivariateSpline
-# from scipy import interpolate
-# import core.filtering as filt
-from BatchTint.KlustaFunctions import klusta
-from core.Tint_Matlab import int16toint8
-import matplotlib.pyplot as plt
-from core.readBin import get_bin_data, get_raw_pos, get_channel_from_tetrode, get_active_tetrode, get_active_eeg
-
-
-def find_sub(string, sub):
-    '''finds all instances of a substring within a string and outputs a list of indices'''
-    result = []
-    k = 0
-    while k < len(string):
-        k = string.find(sub, k)
-        if k == -1:
-            return result
-        else:
-            result.append(k)
-            k += 1  # change to k += len(sub) to not search overlapping results
-    return result
-
-
-def getScalar(channels, set_filename, mode='8bit'):
-    """input channels are from the range of 1->64, but the set file records gains in the channels
-    numbered from 0->63
-
-    This method which will return a scalar which when multiplied by the data will produce the data
-    in uV and not bits."""
-    adc_fullscale = float(get_setfile_parameter('ADC_fullscale_mv', set_filename))
-
-    channel_gains = np.zeros(len(channels))
-
-    for i, channel in enumerate(channels):
-        channel_gains[i] = float(get_setfile_parameter('gain_ch_%d' % int(channel-1), set_filename))
-
-    if mode == '8bit':
-        scalars = np.divide(adc_fullscale * 1000, channel_gains * 128)
-    elif mode == '16bit':
-        scalars = np.divide(adc_fullscale * 1000, channel_gains * 32768)
-
-    return scalars
-
-
-def uV2bits(data, gain, ADC_Fullscale=1500, mode='8bit'):
-    """converts the data to bits:
-    mode='default', for EEG and tetrode data
-    mode='egf', for EGF data
-    """
-
-    if mode == '8bit':
-        scalar = (ADC_Fullscale * 1000) / (gain * 128)
-    else:
-        scalar = (ADC_Fullscale * 1000) / (gain * 32768)
-
-    data = np.divide(data, scalar)
-
-    if mode == '8bit':
-        data[np.where(data > 127)] = 127
-        data[np.where(data < -128)] = -128
-    else:
-        data[np.where(data > 32767)] = 32767
-        data[np.where(data < -32768)] = -32768
-
-    data = np.rint(data)
-
-    return data
-
-
-def write_eeg(filepath, data, Fs):
-
-    data = data.flatten()
-
-    session_path, session_filename = os.path.split(filepath)
-
-    tint_basename = os.path.splitext(session_filename)[0]
-
-    set_filename = os.path.join(session_path, '%s.set' % tint_basename)
-    header = get_set_header(set_filename)
-
-    num_samples = int(len(data))
-
-    if '.egf' in session_filename:
-
-        # EEG_Fs = 4800
-        egf = True
-
-    else:
-
-        # EEG_Fs = 250
-        egf = False
-
-    # if the duration before the set file was overwritten wasn't a round number, it rounded up and thus we need
-    # to append values to the EEG (we will add 0's to the end)
-    duration = int(get_setfile_parameter('duration', set_filename))  # get the duration from the set file
-
-    EEG_expected_num = int(Fs * duration)
-
-    if num_samples < EEG_expected_num:
-        missing_samples = EEG_expected_num - num_samples
-        data = np.hstack((data, np.zeros((1, missing_samples)).flatten()))
-        num_samples = EEG_expected_num
-
-    with open(filepath, 'w') as f:
-
-        num_chans = 'num_chans 1'
-
-        if egf:
-            sample_rate = '\nsample_rate %d Hz' % (int(Fs))
-            data = struct.pack('<%dh' % (num_samples), *[np.int(data_value) for data_value in data.tolist()])
-            b_p_sample = '\nbytes_per_sample 2'
-            num_EEG_samples = '\nnum_EGF_samples %d' % (num_samples)
-
-        else:
-            sample_rate = '\nsample_rate %d.0 hz' % (int(Fs))
-            data = struct.pack('>%db' % (num_samples), *[np.int(data_value) for data_value in data.tolist()])
-            b_p_sample = '\nbytes_per_sample 1'
-            num_EEG_samples = '\nnum_EEG_samples %d' % (num_samples)
-
-        eeg_p_position = '\nEEG_samples_per_position %d' % (5)
-
-        start = '\ndata_start'
-
-        if egf:
-            write_order = [header, num_chans, sample_rate,
-                           b_p_sample, num_EEG_samples, start]
-        else:
-            write_order = [header, num_chans, sample_rate, eeg_p_position,
-                           b_p_sample, num_EEG_samples, start]
-
-        f.writelines(write_order)
-
-    with open(filepath, 'rb+') as f:
-        f.seek(0, 2)
-        f.writelines([data, bytes('\r\ndata_end\r\n', 'utf-8')])
-
-
-def get_setfile_parameter(parameter, set_filename):
-    if not os.path.exists(set_filename):
-        return
-
-    with open(set_filename, 'r+') as f:
-        for line in f:
-            if parameter in line:
-                if line.split(' ')[0] == parameter:
-                    # prevents part of the parameter being in another parameter name
-                    new_line = line.strip().split(' ')
-                    if len(new_line) == 2:
-                        return new_line[-1]
-                    else:
-                        return ' '.join(new_line[1:])
-
-
-def create_pos(pos_filename, pos_data):
-    n = int(pos_data.shape[0])
-
-    session_path, session_filename = os.path.split(pos_filename)
-    tint_basename = os.path.splitext(session_filename)[0]
-    set_filename = os.path.join(session_path, '%s.set' % tint_basename)
-
-    if os.path.exists(pos_filename):
-        return
-
-    header = get_set_header(set_filename)
-
-    with open(pos_filename, 'wb+') as f:  # opening the .pos file
-        write_list = []
-
-        [write_list.append(bytes('%s\r\n' % value, 'utf-8')) for value in header.split('\n') if value != '']
-
-        header_vals = ['num_colours %d' % 4]
-        if 'abid' in header.lower():
-            header_vals.extend(
-                ['\r\nmin_x %d' % 0,
-                 '\r\nmax_x %d' % 768,
-                 '\r\nmin_y %d' % 0,
-                 '\r\nmax_y %d' % 574])
-        elif 'gus' in header.lower():
-            header_vals.extend(
-                ['\r\nmin_x %d' % 0,
-                 '\r\nmax_x %d' % 640,
-                 '\r\nmin_y %d' % 0,
-                 '\r\nmax_y %d' % 480]
-
-            )
-        header_vals.extend(
-            ['\r\nwindow_min_x %d' % int(get_setfile_parameter('xmin', set_filename)),
-            '\r\nwindow_max_x %d' % int(get_setfile_parameter('xmax', set_filename)),
-            '\r\nwindow_min_y %d' % int(get_setfile_parameter('ymin', set_filename)),
-            '\r\nwindow_max_y %d' % int(get_setfile_parameter('ymax', set_filename)),
-            '\r\ntimebase %d hz' % 50,
-            '\r\nbytes_per_timestamp %d' % 4,
-            '\r\nsample_rate %.1f hz' % 50.0,
-            '\r\nEEG_samples_per_position %d' % 5,
-            '\r\nbearing_colour_1 %d' % 0,
-            '\r\nbearing_colour_2 %d' % 0,
-            '\r\nbearing_colour_3 %d' % 0,
-            '\r\nbearing_colour_4 %d' % 0,
-            '\r\npos_format t,x1,y1,x2,y2,numpix1,numpix2',
-            '\r\nbytes_per_coord %d' % 2,
-            '\r\npixels_per_metre %f' % float(
-               get_setfile_parameter('tracker_pixels_per_metre', set_filename)),
-            '\r\nnum_pos_samples %d' % n,
-            '\r\ndata_start'])
-
-        for value in header_vals:
-            write_list.append(bytes(value, 'utf-8'))
-
-        onespot = 1  # this is just in case we decide to add other modes.
-
-        # write_list = [bytes(headers, 'utf-8')]
-
-        # write_list.append()
-
-        if onespot:
-            position_format_string = 'i8h'
-            position_format_string = '>%s' % (n * position_format_string)
-            write_list.append(struct.pack(position_format_string, *pos_data.astype(int).flatten()))
-
-        write_list.append(bytes('\r\ndata_end\r\n', 'utf-8'))
-        f.writelines(write_list)
-
-
-def write_tetrode(filepath, data, Fs):
-
-    session_path, session_filename = os.path.split(filepath)
-    tint_basename = os.path.splitext(session_filename)[0]
-    set_filename = os.path.join(session_path, '%s.set' % tint_basename)
-
-    n = len(data)
-
-    write_order = []
-
-    header = get_set_header(set_filename)
-
-    with open(filepath, 'w') as f:
-        num_chans = 'num_chans 4'
-        timebase_head = '\ntimebase %d hz' % (96000)
-        bp_timestamp = '\nbytes_per_timestamp %d' % (4)
-        # samps_per_spike = '\nsamples_per_spike %d' % (int(Fs*1e-3))
-        samps_per_spike = '\nsamples_per_spike %d' % (50)
-        sample_rate = '\nsample_rate %d hz' % (Fs)
-        b_p_sample = '\nbytes_per_sample %d' % (1)
-        # b_p_sample = '\nbytes_per_sample %d' % (4)
-        spike_form = '\nspike_format t,ch1,t,ch2,t,ch3,t,ch4'
-        num_spikes = '\nnum_spikes %d' % (n)
-        start = '\ndata_start'
-
-        write_order = [header, num_chans, timebase_head,
-                       bp_timestamp,
-                       samps_per_spike, sample_rate, b_p_sample, spike_form, num_spikes, start]
-
-        f.writelines(write_order)
-
-    # rearranging the data to have a flat array of t1, waveform1, t2, waveform2, t3, waveform3, etc....
-    spike_times = np.asarray(sorted(data.keys()))
-
-    # the spike times are repeated for each channel so lets tile this
-    spike_times = np.tile(spike_times, (4, 1))
-    spike_times = spike_times.flatten(order='F')
-
-    spike_values = np.asarray([value for (key, value) in sorted(data.items())])
-
-    # this will create a (n_samples, n_channels, n_samples_per_spike) => (n, 4, 50) sized matrix, we will create a
-    # matrix of all the samples and channels going from ch1 -> ch4 for each spike time
-    # time1 ch1_data
-    # time1 ch2_data
-    # time1 ch3_data
-    # time1 ch4_data
-    # time2 ch1_data
-    # time2 ch2_data
-    # .
-    # .
-    # .
-
-    spike_values = spike_values.reshape((n * 4, 50))  # create the 4nx50 channel data matrix
-
-    # make the first column the time values
-    spike_array = np.hstack((spike_times.reshape(len(spike_times), 1), spike_values))
-
-    data = None
-    spike_times = None
-    spike_values = None
-
-    spike_n = spike_array.shape[0]
-
-    t_packed = struct.pack('>%di' % spike_n, *spike_array[:, 0].astype(int))
-    spike_array = spike_array[:, 1:]  # removing time data from this matrix to save memory
-
-    spike_data_pack = struct.pack('<%db' % (spike_n*50), *spike_array.astype(int).flatten())
-
-    spike_array = None
-
-    # now we need to combine the lists by alternating
-
-    comb_list = [None] * (2*spike_n)
-    comb_list[::2] = [t_packed[i:i + 4] for i in range(0, len(t_packed), 4)]  # breaks up t_packed into a list,
-    # each timestamp is one 4 byte integer
-    comb_list[1::2] = [spike_data_pack[i:i + 50] for i in range(0, len(spike_data_pack), 50)]  # breaks up spike_data_
-    # pack and puts it into a list, each spike is 50 one byte integers
-
-    t_packed = None
-    spike_data_pack = None
-
-    write_order = []
-    with open(filepath, 'rb+') as f:
-
-        write_order.extend(comb_list)
-        write_order.append(bytes('\r\ndata_end\r\n', 'utf-8'))
-
-        f.seek(0, 2)
-        f.writelines(write_order)
+from BatchTINTV3.core.klusta_functions import klusta
+from .Tint_Matlab import int16toint8, get_setfile_parameter
+from .readBin import get_bin_data, get_raw_pos, get_channel_from_tetrode, get_active_tetrode, get_active_eeg
+from .CreatePos import create_pos
+from .ConvertTetrode import write_tetrode
+from .CreateEEG import create_eeg, create_egf
 
 
 def convert_basename(self, set_filename):
@@ -602,7 +295,7 @@ def batchtint(main_window, directory):
 
     check_chosen_settings_directory(main_window)
 
-    if main_window.choice == QtGui.QMessageBox.Abort:
+    if main_window.choice == QtWidgets.QMessageBox.Abort:
         main_window.LogAppend.myGUI_signal.emit(
             '[%s %s]: Batch-Tint of the following directory has been aborted: %s!' % (str(datetime.datetime.now().date()),
                                                                  str(datetime.datetime.now().time())[
@@ -612,7 +305,7 @@ def batchtint(main_window, directory):
 
     check_valid_settings_directory(main_window)
 
-    if main_window.choice == QtGui.QMessageBox.Abort:
+    if main_window.choice == QtWidgets.QMessageBox.Abort:
         main_window.LogAppend.myGUI_signal.emit(
             '[%s %s]: Batch-Tint of the following directory has been aborted: %s!' % (str(datetime.datetime.now().date()),
                                                                  str(datetime.datetime.now().time())[
@@ -621,7 +314,7 @@ def batchtint(main_window, directory):
         return
 
     main_window.settings_fname = main_window.parameters['tintsettings']
-    #klusta_ready = check_klusta_ready(main_window, directory, main_window.parameters['tintsettings'])
+
     klusta_ready = True
 
     if klusta_ready:
@@ -682,20 +375,18 @@ def batchtint(main_window, directory):
 def check_chosen_settings_directory(main_window):
     # checks if the settings are appropriate to run analysis
     if 'Choose the Batch-Tint' in main_window.parameters['tintsettings']:
-        main_window.choice == ''
+        main_window.choice = None
         main_window.directory_chosen = False
         main_window.LogError.myGUI_signal.emit('NoTintSettings')
 
-        while main_window.choice == '':
+        while main_window.choice is None:
             time.sleep(0.5)
 
-        if main_window.choice == QtGui.QMessageBox.Ok:
+        if main_window.choice == QtWidgets.QMessageBox.Ok:
 
             while not main_window.directory_chosen:
-                time.sleep(0.5)
+                time.sleep(0.1)
 
-            # main_window.new_file()
-            # main_window.parameters['tintsettings'] = main_window.batchtintsettings_edit.text()
             main_window.parameters['tintsettings'] = os.path.join(
                 main_window.batchtintsettings_edit.text(), 'settings.json')
 
@@ -706,32 +397,32 @@ def check_valid_settings_directory(main_window):
         if 'Choose the Batch-Tint' in main_window.parameters['tintsettings']:
             check_chosen_settings_directory()
 
-            if main_window.choice == QtGui.QMessageBox.Abort:
+            if main_window.choice == QtWidgets.QMessageBox.Abort:
                 return
 
             if 'Choose the Batch-Tint' in main_window.parameters['tintsettings']:
-                main_window.choice == ''
+                main_window.choice = None
                 main_window.directory_chosen = False
                 main_window.LogError.myGUI_signal.emit('DefaultTintSettings')
 
-                while main_window.choice == '':
+                while main_window.choice is None:
                     time.sleep(0.5)
 
-                if main_window.choice == QtGui.QMessageBox.Yes:
+                if main_window.choice == QtWidgets.QMessageBox.Yes:
                     main_window.SETTINGS_DIR = main_window.BATCH_TINT_DIR
                     main_window.parameters['tintsettings'] = os.path.join(main_window.SETTINGS_DIR, 'settings.json')
                 else:
                     return
         else:
             if not os.path.exists(os.path.join(main_window.parameters['tintsettings'])):
-                main_window.choice == ''
+                main_window.choice = None
                 main_window.directory_chosen = False
                 main_window.LogError.myGUI_signal.emit('InvalidTintSettings')
 
-                while main_window.choice == '':
+                while main_window.choice is None:
                     time.sleep(0.5)
 
-                if main_window.choice == QtGui.QMessageBox.Yes:
+                if main_window.choice == QtWidgets.QMessageBox.Yes:
 
                     while not main_window.directory_chosen:
                         time.sleep(0.5)
@@ -739,128 +430,13 @@ def check_valid_settings_directory(main_window):
                     main_window.parameters['tintsettings'] = os.path.join(
                         main_window.batchtintsettings_edit.text(), 'settings.json')
 
-                elif main_window.choice == QtGui.QMessageBox.Default:
+                elif main_window.choice == QtWidgets.QMessageBox.Default:
                     main_window.SETTINGS_DIR = main_window.BATCH_TINT_DIR
                     main_window.parameters['tintsettings'] = os.path.join(main_window.SETTINGS_DIR, 'settings.json')
                 else:
                     return
             else:
                 return
-
-
-def is_converted(set_filename):
-    """This method will check if the file has been converted already"""
-
-    # find active tetrodes
-
-    active_tetrodes = get_active_tetrode(set_filename)
-
-    # check if each of these active .N files have been created yet
-
-    set_basename = os.path.basename(os.path.splitext(set_filename)[0])
-
-    set_directory = os.path.dirname(set_filename)
-
-    all_tetrodes_written = True
-    all_eeg_written = True
-    all_egf_written = True
-    pos_written = True
-
-    if not os.path.exists(os.path.join(set_directory, '%s.pos' % (set_basename))):
-        pos_written = False
-
-    for tetrode in active_tetrodes:
-
-        if not os.path.exists(os.path.join(set_directory, '%s.%d' % (set_basename, int(tetrode)))):
-            all_tetrodes_written = False
-            break
-
-    active_eeg = get_active_eeg(set_filename)
-
-    for eeg in active_eeg.keys():
-        if eeg == 1:
-            if not os.path.exists(os.path.join(set_directory, '%s.eeg' % (set_basename))):
-                all_eeg_written = False
-                break
-
-        elif not os.path.exists(os.path.join(set_directory, '%s.eeg%d' % (set_basename, int(eeg)))):
-            all_eeg_written = False
-            break
-
-    if is_egf_active(set_filename):
-        for egf in active_eeg.keys():
-            if egf == 1:
-                if not os.path.exists(os.path.join(set_directory, '%s.egf' % (set_basename))):
-                    all_egf_written = False
-                    break
-
-            elif not os.path.exists(os.path.join(set_directory, '%s.egf%d' % (set_basename, int(egf)))):
-                all_egf_written = False
-                break
-
-    return all_tetrodes_written and all_eeg_written and all_egf_written and pos_written
-
-
-def is_egf_active(set_filename):
-    active_egf_str = 'saveEGF'
-
-    with open(set_filename) as f:
-        for line in f:
-
-            if active_egf_str in line:
-                _, egf_status = line.split(' ')
-
-                if int(egf_status) == 1:
-                    return True
-
-        return False
-
-
-def fir_hann(data, Fs, cutoff, n_taps=101, showresponse=0):
-    # The Nyquist rate of the signal.
-    nyq_rate = Fs / 2
-
-    b = scipy.signal.firwin(n_taps, cutoff / nyq_rate, window='hann')
-
-    a = 1.0
-    # Use lfilter to filter x with the FIR filter.
-    data = scipy.signal.lfilter(b, a, data)
-    # data = scipy.signal.filtfilt(b, a, data)
-
-    if showresponse == 1:
-        w, h = scipy.signal.freqz(b, a, worN=8000)  # returns the requency response h, and the angular frequencies
-        # w in radians/sec
-        # w (radians/sec) * (1 cycle/2pi*radians) = Hz
-        # f = w / (2 * np.pi)  # Hz
-
-
-        plt.figure(figsize=(20, 15))
-        plt.subplot(211)
-        plt.semilogx((w / np.pi) * nyq_rate, np.abs(h), 'b')
-        plt.xscale('log')
-        plt.title('%s Filter Frequency Response')
-        plt.xlabel('Frequency(Hz)')
-        plt.ylabel('Gain [V/V]')
-        plt.margins(0, 0.1)
-        plt.grid(which='both', axis='both')
-        plt.axvline(cutoff, color='green')
-
-    return data, n_taps
-
-
-def has_files(set_filename):
-    """This method will check if all the necessary files exist"""
-
-    # the only thing it needs is a .bin file
-
-    tint_basename = os.path.basename(os.path.splitext(set_filename)[0])
-
-    directory = os.path.dirname(set_filename)
-
-    if os.path.exists(os.path.join(directory, '%s.bin' % tint_basename)):
-        return True
-
-    return False
 
 
 def get_Fs(set_filename):
@@ -877,16 +453,6 @@ def get_Fs(set_filename):
                 except:
                     return float(Fs)
     return
-
-
-def get_set_header(set_filename):
-    with open(set_filename, 'r+') as f:
-        header = ''
-        for line in f:
-            header += line
-            if 'sw_version' in line:
-                break
-    return header
 
 
 def find_consec(data):
@@ -912,17 +478,6 @@ def find_consec(data):
             if index == len(data) - 1:
                 consecutive_values.append(current_consecutive)
     return consecutive_values
-
-
-def remove_appended_zeros(data):
-    """This method will remove the zeros that were added to the end of the end of the data"""
-
-    zero_ind = find_consec(np.where((data.flatten() == 0) | (data.flatten() == 0.0))[0])[-1]
-
-    if len(data.flatten()) - 1 not in zero_ind:
-        return []
-
-    return zero_ind
 
 
 def get_spikes(data, threshold):
@@ -1035,138 +590,6 @@ def validate_spikes(self, tetrode, spikes, data, t, pre_spike_samples=10, post_s
         # spike_refractory = list(np.arange(spike + 1, spike + post_spike_samples + 1))
 
     return tetrode_spikes
-
-
-def create_eeg(filename, data, Fs, DC_Blocker=True):
-    # data is given in int16
-
-    if os.path.exists(filename):
-        return
-
-    Fs_EGF = int(4.8e3)  # sampling rate of .EGF files
-    Fs_EEG = int(250)
-    """
-    if DC_Blocker:
-        data = sp.Filtering().dcblock(data, 0.1, Fs)
-
-    # LP at 500
-    data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
-                                  automatic=0, Rp=0.1, filttype='cheby1', showresponse=0)
-
-    # notch filter the data
-    # data = sp.Filtering().notch_filt(data, Fs, freq=60, band=10, order=3)
-    data = filt.notch_filt(data, Fs, freq=60, band=10, order=2)
-
-    # downsample to 4.8khz signal for EGF signal (EEG is derived from EGF data)
-    """
-
-    data = data[:, 0::int(Fs / Fs_EGF)]
-
-    # append zeros to make the duration a round number
-    duration_round = np.ceil(data.shape[1] / Fs_EGF)  # the duration should be rounded up to the nearest integer
-    missing_samples = int(duration_round * Fs_EGF - data.shape[1])
-    if missing_samples != 0:
-        missing_samples = np.tile(np.array([0]), (1, missing_samples))
-        data = np.hstack((data, missing_samples))
-
-    # ensure the full last second of data is equal to zero
-    data[0, -int(Fs_EGF):] = 0
-
-    data = data[0, :-Fs_EGF]
-
-    # data = np.rint(data)  # convert the data to integers
-    data = data.astype(np.int32)  # convert the data to integers
-
-    # ensuring the appropriate range of the values
-    data[np.where(data > 32767)] = 32767
-    data[np.where(data < -32768)] = -32768
-
-    data, N = fir_hann(data, Fs_EGF, 125, n_taps=101, showresponse=0)  # FIR filter to remove anti aliasing
-
-    data = int16toint8(data)
-
-    data = EEG_downsample(data)
-
-    # append 1 second of 0's like tint does
-    data = np.hstack((data.flatten(), np.zeros((250, 1)).flatten()))
-    ##################################################################################################
-    # ---------------------------Writing the EEG Data-------------------------------------------
-    ##################################################################################################
-
-    write_eeg(filename, data, Fs_EEG)
-
-
-def EEG_downsample(EEG):
-    """The EEG data is created from the EGF files which involves a 4.8k to 250 Hz conversion"""
-    EEG = EEG.flatten()
-
-    i = -1
-    # i = 0
-
-    # indices = [i]
-    indices = []
-    while i < len(EEG) - 1:
-        indices.extend([(i + 19), (i + 19 * 2), (i + 19 * 3), (i + 19 * 4), (i + 19 * 4 + 20)])
-        # indices.extend([(i+20), (i+20+19), (i+20+19*2), (i+20+19*3), (i+20+19*4)])
-        i += (19 * 4 + 20)
-
-    indices = np.asarray(indices)
-
-    indices = indices[np.where(indices <= len(EEG) - 1)]
-
-    return EEG[indices]
-
-
-def create_egf(filename, data, Fs, DC_Blocker=True):
-    if os.path.exists(filename):
-        return
-
-    Fs_EGF = int(4.8e3)  # sampling rate of .EGF files
-
-    """
-    if DC_Blocker:
-        data = sp.Filtering().dcblock(data, 0.1, Fs)
-
-    # LP at 500
-    data = sp.Filtering().iirfilt(bandtype='low', data=data, Fs=Fs, Wp=500, order=6,
-                                  automatic=0, Rp=0.1, filttype='cheby1', showresponse=0)
-
-    # notch filter the data
-    # data = sp.Filtering().notch_filt(data, Fs, freq=60, band=10, order=3)
-    data = filt.notch_filt(data, Fs, freq=60, band=10, order=2)
-
-    # downsample to 4.8khz signal for EGF signal (EEG is derived from EGF data)
-    """
-
-    data = data[:, 0::int(Fs / Fs_EGF)]
-
-    # notch filter the data
-    # data = sp.Filtering().notch_filt(data, Fs_EGF, freq=60, band=10, order=3)
-
-    # append zeros to make the duration a round number
-    duration_round = np.ceil(data.shape[1] / Fs_EGF)  # the duration should be rounded up to the nearest integer
-    missing_samples = int(duration_round * Fs_EGF - data.shape[1])
-    if missing_samples != 0:
-        missing_samples = np.tile(np.array([0]), (1, missing_samples))
-        data = np.hstack((data, missing_samples))
-
-    # ensure the full last second of data is equal to zero
-    data[0, -int(Fs_EGF):] = 0
-
-    # data = np.rint(data)  # convert the data to integers
-    data = data.astype(np.int32)  # convert the data to integers
-
-    # ensuring the appropriate range of the values
-    data[np.where(data > 32767)] = 32767
-    data[np.where(data < -32768)] = -32768
-
-    # data is already in int16 which is what the final unit should be in
-
-    ##################################################################################################
-    # ---------------------------Writing the EGF Data-------------------------------------------
-    ##################################################################################################
-
-    write_eeg(filename, data, Fs_EGF)
 
 
 def overwrite_setfile(set_filename):

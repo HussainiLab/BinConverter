@@ -1,34 +1,31 @@
 import sys, shutil, os, time, datetime
-from PyQt4 import QtCore, QtGui
-from core.ConversionFunctions import has_files, is_converted, convert_basename
+from PyQt5 import QtCore, QtGui, QtWidgets
+from core.ConversionFunctions import convert_basename
 from distutils.dir_util import copy_tree
-from BatchTint.settings import Settings_Window
-from BatchTint.KlustaFunctions import batchtint
-from core.utils import background, Worker, center
-
-_author_ = "Geoffrey Barrett"  # defines myself as the author
-
-Large_Font = ("Arial", 11)  # defines two fonts for different purposes (might not be used
-Small_Font = ("Arial", 8)
+from BatchTINTV3.core.settings import Settings_Window
+from BatchTINTV3.core.klusta_functions import klusta
+from core.defaultParameters import default_batchtint, default_filename
+from core.utils import background, Worker, center, Communicate, project_name, raise_w
+from core.AddSessions import RepeatAddSessions
+import json
 
 
-class Window(QtGui.QWidget):  # defines the window class (main window)
+class Window(QtWidgets.QWidget):  # defines the window class (main window)
 
     def __init__(self):  # initializes the main window
         super(Window, self).__init__()
-        # self.setGeometry(50, 50, 500, 300)
         background(self)  # acquires some features from the background function we defined earlier
         # sets the title of the window
-        #self.child_session = None
-        if getattr(sys, 'frozen', False):
-            # frozen
-            self.setWindowTitle(os.path.splitext(os.path.basename(sys.executable))[0] + " - Main Window")
-        else:
-            self.setWindowTitle(os.path.splitext(os.path.basename(__file__))[0] + " - Main Window")
+
+        self.setWindowTitle("%s - Main Window" % project_name)
 
         self.current_session = ''
+        self.directory_changed = False
+        self.modifying_list = False
+        self.reset_add_thread = False
+        self.repeat_thread_active = True
         self.conversion = False
-        self.choice = ''
+        self.choice = None
         self.file_chosen = False
         self.LogAppend = Communicate()
         self.LogAppend.myGUI_signal.connect(self.AppendLog)
@@ -51,7 +48,8 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         self.RemoveChildItem = Communicate()
         self.RemoveChildItem.myGUI_signal_QTreeWidgetItem.connect(self.removeChild)
 
-        #self.q = queue.Queue()
+        self.RepeatAddSessionsThread = QtCore.QThread()
+        self.convert_thread = QtCore.QThread()
 
         self.home()  # runs the home function
 
@@ -59,115 +57,100 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
 
         # ------ buttons + widgets -----------------------------
 
-        quit_btn = QtGui.QPushButton("Quit", self)
+        quit_btn = QtWidgets.QPushButton("Quit", self)
         quit_btn.clicked.connect(self.close_app)
         quit_btn.setShortcut("Ctrl+Q")
         quit_btn.setToolTip('Click to quit (or press Ctrl+Q)')
 
-        self.convert_button = QtGui.QPushButton('Convert', self)
+        self.convert_button = QtWidgets.QPushButton('Convert', self)
         self.convert_button.clicked.connect(self.Convert)
         self.convert_button.setToolTip('Click to start the conversion.')
 
         self.batch_tint_settings_window = None
-        self.batch_tint_settings_button = QtGui.QPushButton("Batch Tint Settings")
+        self.batch_tint_settings_button = QtWidgets.QPushButton("Batch Tint Settings")
         self.batch_tint_settings_button.clicked.connect(self.open_batch_tint_settings)
 
-        btn_layout = QtGui.QHBoxLayout()
+        btn_layout = QtWidgets.QHBoxLayout()
 
         button_order = [self.convert_button, self.batch_tint_settings_button, quit_btn]
         for button in button_order:
             btn_layout.addWidget(button)
 
+        try:
+            mod_date = time.ctime(os.path.getmtime(__file__))
+        except:
+            mod_date = time.ctime(os.path.getmtime(os.path.join(self.PROJECT_DIR, "BinConverterGUI.exe")))
+
         # Version information -------------------------------------------
-        if getattr(sys, 'frozen', False):
-            # frozen
-            dir_ = os.path.dirname(sys.executable)
-            mod_date = time.ctime(os.path.getmtime(dir_))  # finds the modification date of the program
-            vers_label = QtGui.QLabel(
-                os.path.splitext(os.path.basename(sys.executable))[0] + " V1.0 - Last Updated: " + mod_date)
-        else:
-            # unfrozen
-            dir_ = os.path.dirname(os.path.realpath(__file__))
-            mod_date = time.ctime(os.path.getmtime(dir_))  # finds the modification date of the program
-            vers_label = QtGui.QLabel(
-                os.path.splitext(os.path.basename(__file__))[0] + " V1.0 - Last Updated: " + mod_date)
+        vers_label = QtWidgets.QLabel("%s - Last Updated: %s" % (project_name, mod_date))
 
         # ------------------ widget layouts ----------------
-        '''
-        self.conversion_widgets = ['Choose Directory', '', 'Current Directory:', '',
-                                'Recording Sessions:', '', '', '',
-                                'Log:', '', '', '']
-        '''
-
-        self.choose_directory_btn = QtGui.QPushButton('Choose Directory', self)
+        self.choose_directory_btn = QtWidgets.QPushButton('Choose Directory', self)
         self.choose_directory_btn.clicked.connect(self.new_directory)
 
         # the label that states that the line-edit corresponds to the current directory
-        directory_label = QtGui.QLabel('Current Directory')
+        directory_label = QtWidgets.QLabel('Current Directory')
         directory_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
 
         # the line-edit that displays the current directory
-        self.directory_edit = QtGui.QLineEdit()
+        self.directory_edit = QtWidgets.QLineEdit()
         self.directory_edit.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)  # aligning the text
-        self.directory_edit.setText("Choose a Directory!")  # default text
+        self.directory_edit.setText(default_filename)  # default text
         # updates the directory every time the text changes
         self.directory_edit.textChanged.connect(self.changed_directory)
-        self.directory = self.directory_edit.text()
 
-        self.batch_tint_checkbox = QtGui.QCheckBox("Batch Tint")
+        self.batch_tint_checkbox = QtWidgets.QCheckBox("Batch Tint")
         self.batch_tint_checkbox.toggle()
 
         # creating the layout for the text + line-edit so that they are aligned appropriately
-        current_directory_layout = QtGui.QHBoxLayout()
+        current_directory_layout = QtWidgets.QHBoxLayout()
         current_directory_layout.addWidget(directory_label)
         current_directory_layout.addWidget(self.directory_edit)
         current_directory_layout.addWidget(self.batch_tint_checkbox)
 
-        #current_directory_layout.addWidget(self.batch_tint_checkbox)
-
         # creating a layout with the line-edit/text + the button so that they are all together
-        directory_layout = QtGui.QHBoxLayout()
+        directory_layout = QtWidgets.QHBoxLayout()
         directory_layout.addWidget(self.choose_directory_btn)
         directory_layout.addLayout(current_directory_layout)
 
         # creates the queue of recording sessions to convert
-        self.recording_queue = QtGui.QTreeWidget()
+        self.recording_queue = QtWidgets.QTreeWidget()
         self.recording_queue.headerItem().setText(0, "Recording Session:")
-        recording_queue_label = QtGui.QLabel("Conversion Queue:")
+        recording_queue_label = QtWidgets.QLabel("Conversion Queue:")
         recording_queue_label.setFont(QtGui.QFont("Arial", 10, weight=QtGui.QFont.Bold))
 
-        recording_queue_layout = QtGui.QVBoxLayout()
+        recording_queue_layout = QtWidgets.QVBoxLayout()
         recording_queue_layout.addWidget(recording_queue_label)
         recording_queue_layout.addWidget(self.recording_queue)
 
         # adding the layout for the log
-        self.log = QtGui.QTextEdit()
-        log_label = QtGui.QLabel('Log:')
+        self.log = QtWidgets.QTextEdit()
+        log_label = QtWidgets.QLabel('Log:')
         log_label.setFont(QtGui.QFont("Arial", 10, weight=QtGui.QFont.Bold))
-        log_layout = QtGui.QVBoxLayout()
+        log_layout = QtWidgets.QVBoxLayout()
         log_layout.addWidget(log_label)
         log_layout.addWidget(self.log)
 
         # adding the thresholding portion fo the layout
 
-        threshold_label = QtGui.QLabel('Threshold(SD\'s)')
-        self.threshold = QtGui.QLineEdit()
+        threshold_label = QtWidgets.QLabel('Threshold(SD\'s)')
+        self.threshold = QtWidgets.QLineEdit()
         self.threshold.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)
         self.threshold.setText('3')
         self.threshold.setToolTip("This will determine the standard deviations away from the baseline value " +
                                   "that you want to use for the thresholding")
 
         # check if you want to perform a DC block on the EEG and EGF data
-        self.dc_blocker = QtGui.QCheckBox("DC Blocking Filter")
-        self.dc_blocker.toggle() # set the default to on
+        self.dc_blocker = QtWidgets.QCheckBox("DC Blocking Filter")
+        self.dc_blocker.toggle()  # set the default to on
 
-        threshold_layout = QtGui.QHBoxLayout()
+        threshold_layout = QtWidgets.QHBoxLayout()
         for widget in [threshold_label, self.threshold]:
             threshold_layout.addWidget(widget)
 
         # extra parameters layout
 
-        parameters_layout = QtGui.QHBoxLayout()
+        parameters_layout = QtWidgets.QHBoxLayout()
         for parameter in [threshold_layout, self.dc_blocker]:
             if 'Layout' in parameter.__str__():
                 parameters_layout.addLayout(parameter)
@@ -176,7 +159,7 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
 
         # ------------- layout ------------------------------
 
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
 
         layout_order = [directory_layout, recording_queue_layout, log_layout,
                         parameters_layout, btn_layout]
@@ -189,7 +172,7 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
                 layout.addWidget(order, 0, QtCore.Qt.AlignCenter)
                 layout.addStretch(1)
 
-        layout.addStretch(1)  # adds stretch to put the version info at the buttom
+        layout.addStretch(1)  # adds stretch to put the version info at the button
         layout.addWidget(vers_label)  # adds the date modification/version number
 
         self.set_parameters('Default')
@@ -204,10 +187,8 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
 
         # start thread that will search for new files to convert
 
-        self.RepeatAddSessionsThread = QtCore.QThread()
         self.RepeatAddSessionsThread.start()
-
-        self.RepeatAddSessionsWorker = Worker(self.FindSessionsRepeat)
+        self.RepeatAddSessionsWorker = Worker(RepeatAddSessions, self)
         self.RepeatAddSessionsWorker.moveToThread(self.RepeatAddSessionsThread)
         self.RepeatAddSessionsWorker.start.emit("start")
 
@@ -216,7 +197,12 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         It will define the window, as well as raise the window if it is already defined"""
 
         if self.batch_tint_settings_window is None:
-            self.batch_tint_settings_window = Settings_Window(self)
+            batchtint_filename = os.path.join(self.SETTINGS_DIR, 'batchtint_settings_filename.json')
+            self.batch_tint_settings_window = Settings_Window(settings_fname=batchtint_filename)
+            self.batch_tint_settings_window.backbtn.clicked.connect(lambda: raise_w(self,
+                                                                                    self.batch_tint_settings_window))
+            self.batch_tint_settings_window.backbtn2.clicked.connect(lambda: raise_w(self,
+                                                                                     self.batch_tint_settings_window))
 
     def open_batch_tint_settings(self):
 
@@ -226,75 +212,84 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         self.batch_tint_settings_window.raise_window()
 
     def changed_directory(self):
-        self.directory = self.directory_edit.text()
 
+        self.directory_changed = True
+        self.change_directory_time = time.time()
         # Find the sessions, and populate the conversion queue
 
-        self.recording_queue.clear()
-
     def AppendLog(self, message):
+        """
+        A function that will append the Log field of the main window (mainly
+        used as a slot for a custom pyqt signal)
+        """
+        if '#' in message:
+            message = message.split('#')
+            color = message[-1].lower()
+            message = message[0]
+            message = '<span style="color:%s">%s</span>' % (color, message)
+
         self.log.append(message)
 
     def raiseError(self, error_val):
         '''raises an error window given certain errors from an emitted signal'''
 
         if 'NoDir' in error_val:
-            self.choice = QtGui.QMessageBox.question(self, "No Chosen Directory",
+            self.choice = QtWidgets.QMessageBox.question(self, "No Chosen Directory",
                                                      "You have not chosen a directory,\n"
                                                      "please choose one to continue!",
-                                                     QtGui.QMessageBox.Ok)
+                                                     QtWidgets.QMessageBox.Ok)
 
         elif 'NoPos' in error_val:
             session_pos_filename = error_val[error_val.find('!')+1:]
-            self.choice = QtGui.QMessageBox.question(self, "No '.pos' file!",
+            self.choice = QtWidgets.QMessageBox.question(self, "No '.pos' file!",
                                                      "There '.pos' file for this '.rhd' session:\n" +
                                                      '%s\n' %session_pos_filename +
                                                      "was not found. would you like a dummy '.pos' file \n"
                                                      "to be created for you?\n",
-                                                     QtGui.QMessageBox.Yes, QtGui.QMessageBox.No)
+                                                     QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
 
         elif 'NoTintSettings' in error_val:
-            self.choice = QtGui.QMessageBox.question(self, "No Batch-Tint Settings Directory!",
+            self.choice = QtWidgets.QMessageBox.question(self, "No Batch-Tint Settings Directory!",
                                                      "You have not chosen the settings directory for Batch-Tint,\n"
                                                      "in the main directory that holds all the Batch-Tint files\n"
                                                      "there will be a directory entitled 'settings' that holds\n"
                                                      "all the '.json' files, please choose this folder to continue!",
-                                                     QtGui.QMessageBox.Ok | QtGui.QMessageBox.Abort)
-            while self.choice == '':
+                                                     QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Abort)
+            while self.choice is None:
                 time.sleep(0.5)
 
-            if self.choice == QtGui.QMessageBox.Ok:
+            if self.choice == QtWidgets.QMessageBox.Ok:
                 self.new_settings_directory()
             else:
                 return
 
         elif 'StillNoTintSettings' in error_val:
-            self.choice = QtGui.QMessageBox.question(self, "No Batch-Tint Settings Directory!",
+            self.choice = QtWidgets.QMessageBox.question(self, "No Batch-Tint Settings Directory!",
                                                      "You still have not chosen the settings directory for Batch-Tint,\n"
                                                      "please choose it now.\n",
-                                                     QtGui.QMessageBox.Ok | QtGui.QMessageBox.Abort)
-            while self.choice == '':
+                                                     QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Abort)
+            while self.choice is None:
                 time.sleep(0.5)
 
-            if self.choice == QtGui.QMessageBox.Ok:
+            if self.choice == QtWidgets.QMessageBox.Ok:
                 self.new_settings_directory()
             else:
                 return
 
         elif 'DefaultTintSettings' in error_val:
-            self.choice = QtGui.QMessageBox.question(self, "No Batch-Tint Settings Directory!",
+            self.choice = QtWidgets.QMessageBox.question(self, "No Batch-Tint Settings Directory!",
                                                      "You still have not chosen the settings directory for Batch-Tint,\n"
                                                      "Do you want to try with the default batch-tint settings?\n",
-                                                     QtGui.QMessageBox.Yes, QtGui.QMessageBox.Abort)
+                                                     QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.Abort)
 
         elif 'InvalidTintSettings' in error_val:
-            self.choice = QtGui.QMessageBox.question(self, "Invalid Batch-Tint Settings file!",
+            self.choice = QtWidgets.QMessageBox.question(self, "Invalid Batch-Tint Settings file!",
                                                      "You chose an invalid Batch-Tint settings directory,\n"
                                                      "Do you want to choose another directory?\n"
                                                      "Note: Press Default to use the default Batch-Tint Settings!",
-                                                     QtGui.QMessageBox.Yes, QtGui.QMessageBox.Default | QtGui.QMessageBox.Abort)
+                                                     QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.Default | QtWidgets.QMessageBox.Abort)
 
-            if self.choice == QtGui.QMessageBox.Yes:
+            if self.choice == QtWidgets.QMessageBox.Yes:
                 self.new_settings_directory()
             else:
                 return
@@ -303,96 +298,16 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
 
         # pop up window that asks if you really want to exit the app ------------------------------------------------
 
-        choice = QtGui.QMessageBox.question(self, "Quitting ",
+        choice = QtWidgets.QMessageBox.question(self, "Quitting ",
                                             "Do you really want to exit?",
-                                            QtGui.QMessageBox.Yes | QtGui.QMessageBox.No)
-        if choice == QtGui.QMessageBox.Yes:
+                                            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if choice == QtWidgets.QMessageBox.Yes:
             sys.exit()  # tells the app to quit
         else:
             pass
 
-    def addSessions(self):
-        """Adds any sessions that are not already on the list"""
-
-        directory_added = False
-        # finds the sub directories within the chosen directory
-        sub_directories = [d for d in os.listdir(self.directory)
-                           if os.path.isdir(os.path.join(self.directory, d)) and
-                           len([file for file in os.listdir(os.path.join(self.directory, d))
-                                if '.set' in file]) != 0]
-
-        iterator = QtGui.QTreeWidgetItemIterator(self.recording_queue)
-        # loops through all the already added sessions
-        added_directories = []
-        while iterator.value():
-            item = iterator.value()
-            if not os.path.exists(os.path.join(self.directory, item.data(0, 0))):
-                # then remove from the list since it doesn't exist anymore
-
-                root = self.recording_queue.invisibleRootItem()
-                for child_index in range(root.childCount()):
-                    if root.child(child_index) == item:
-                        self.RemoveChildItem.myGUI_signal_QTreeWidgetItem.emit(item)
-                        # root.removeChild(directory_item)
-            else:
-                added_directories.append(item.data(0, 0))
-
-            iterator += 1
-
-        for directory in sub_directories:
-
-            if 'Converted' in directory or 'Processed' in directory:
-                continue
-
-            if directory in added_directories:
-                # the directory has already been added, skip
-                continue
-
-            directory_item = QtGui.QTreeWidgetItem()
-            directory_item.setText(0, directory)
-
-            try:
-                self.sessions = self.FindSessions(os.path.join(self.directory, directory))
-            except FileNotFoundError:
-                return
-
-            # add the sessions to the TreeWidget
-            for session in self.sessions:
-                if isinstance(session, str):
-                    session = [session]  # needs to be a list for the sorted()[] line
-
-                tint_basename = os.path.basename(os.path.splitext(sorted(session, reverse=False)[0])[0])
-
-                #if session == self.current_session:
-                #    already_added = True
-
-                # only adds the sessions that haven't been added already
-
-                session_item = QtGui.QTreeWidgetItem()
-                session_item.setText(0, tint_basename)
-
-                # directory_item.addChild(session_item)
-
-                for file in session:
-                    session_file_item = QtGui.QTreeWidgetItem()
-                    session_file_item.setText(0, file)
-                    session_item.addChild(session_file_item)
-
-                directory_item.addChild(session_item)
-
-            if directory_item.childCount() != 0:
-                # makes sure that it only adds sessions that have sessions to convert
-                self.recording_queue.addTopLevelItem(directory_item)
-
-                directory_added = True
-                # self.q.put(tint_basename)
-                # self.q.put(directory)
-
-        if directory_added:
-            pass
-
     def Convert(self):
-        self.choice == ''
+        self.choice = None
         self.current_session = ''
         self.parameters = self.get_paramters()
 
@@ -401,13 +316,10 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         self.convert_button.clicked.disconnect()
         self.convert_button.clicked.connect(self.StopConversion)
 
-        # self.addSessions()
-
         self.conversion = True
         self.position_overwritten = False
         # start conversion threads
 
-        self.convert_thread = QtCore.QThread()
         self.convert_thread.start()
 
         self.convert_thread_worker = Worker(self.convert_queue)
@@ -416,7 +328,7 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
 
     def convert_queue(self):
 
-        if 'Choose a Directory' in self.directory:
+        if 'Choose a Directory' in self.directory_edit.text():
             self.LogError.myGUI_signal.emit('NoDir')
             self.StopConversion()
             return
@@ -432,7 +344,7 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
                 continue
             else:
                 # check if the path exists
-                sessionpath = os.path.join(self.directory, self.session_item.data(0, 0))
+                sessionpath = os.path.join(self.directory_edit.text(), self.session_item.data(0, 0))
                 if not os.path.exists(sessionpath):
                     self.top_level_taken = False
                     self.RemoveQueueItem.myGUI_signal.emit(str(0))
@@ -457,85 +369,28 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
 
         self.conversion = False
 
-    def FindSessionsRepeat(self):
-        """This will continuously look for files to add to the Queue"""
-
-        while True:
-            time.sleep(0.1)  # wait X seconds before adding sessions to create less stress on the machine
-
-            if os.path.exists(self.directory):
-                self.addSessions()
-
-    def FindSessions(self, directory):
-        """This function will find the sessions"""
-
-        directory_file_list = os.listdir(
-            directory)  # making a list of all files within the specified directory
-
-        set_filenames = []
-
-        [set_filenames.append(file) for file in directory_file_list if
-         '.set' in file and has_files(os.path.join(directory, file)) and not
-         is_converted(os.path.join(directory, file))]
-
-        return set_filenames
-
     def new_directory(self):
         '''A function that will be used from the Choose Set popup window that will
         produce a popup so the user can pick a filename for the .set file'''
         # prompt user to pick a .set file
 
-        current_directory_name = str(QtGui.QFileDialog.getExistingDirectory(self, "Select a Directory!"))
+        current_directory_name = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a Directory!")
 
         # if no file chosen, skip
         if current_directory_name == '':
             return
 
-        self.recording_queue.clear()
-
-        self.LogAppend.myGUI_signal.emit(
-            '[%s %s]: New Directory Chosen: %s' %
-            (str(datetime.datetime.now().date()),
-             str(datetime.datetime.now().time())[:8], current_directory_name))
-
         # change the line-edit that contains the directory information
         self.directory_edit.setText(current_directory_name)
 
-        self.LogAppend.myGUI_signal.emit(
-            '[%s %s]: Finding Raw Recording Sessions Within Chosen Directory!' %
-            (str(datetime.datetime.now().date()),
-             str(datetime.datetime.now().time())[:8]))
-
-        #self.sessions = self.FindSessions(directory)
-
-        # self.addSessions()
-
-        #self.AppendLog('Found %d sessions within this directory!' % len(self.sessions))
-
-        #add the sessions to the TreeWidget
-        '''
-        self.recording_queue.clear()
-        for session in self.sessions:
-            tint_basename = os.path.basename(os.path.splitext(sorted(session, reverse=False)[0])[0])
-
-            session_item = QtGui.QTreeWidgetItem()
-            session_item.setText(0, tint_basename)
-
-            for file in session:
-                session_file_item = QtGui.QTreeWidgetItem()
-                session_file_item.setText(0, file)
-                session_item.addChild(session_file_item)
-
-            self.recording_queue.addTopLevelItem(session_item)
-            self.q.put(tint_basename)
-        '''
 
     def new_file(self):
-        '''this method is no longer necessary, decided to have
-        the user choose the settings directory instead of the file'''
-        cur_file_name = str(
-            QtGui.QFileDialog.getOpenFileName(self, "Select your Batch-Tint Settings File!", '',
-                                              'Settings Files (*settings.json)'))
+        '''
+        this method is no longer necessary, decided to have
+        the user choose the settings directory instead of the file
+        '''
+        cur_file_name, file_ext = QtWidgets.QFileDialog.getOpenFileName(self, "Select your Batch-Tint Settings File!", '',
+                                              'Settings Files (*settings.json)')
 
         # if no file chosen, skip
         if cur_file_name == '':
@@ -546,12 +401,11 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         self.file_chosen = True
 
     def new_settings_directory(self):
-        current_directory_name = str(QtGui.QFileDialog.getExistingDirectory(self, "Select a Directory!"))
+        current_directory_name = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a Directory!")
 
         if current_directory_name != '':
             # replace the current .set field in the choose .set window with chosen filename
             self.batchtintsettings_edit.setText(current_directory_name)
-            # self.settings_fname = os.path.join(current_directory_name, 'settings.json')
             self.SETTINGS_DIR = current_directory_name
 
         self.directory_chosen = True
@@ -560,8 +414,7 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
 
         if 'default' in mode.lower():
 
-            default_settings = {'Batch-Tint': 1,
-                                }
+            default_settings = {'Batch-Tint': default_batchtint}
 
             for key, value in default_settings.items():
 
@@ -586,8 +439,6 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
             parameters['batchtint'] = True
         else:
             parameters['batchtint'] = False
-
-        # parameters['tintsettings'] = self.batchtintsettings_edit.text()
 
         return parameters
 
@@ -614,25 +465,10 @@ class Window(QtGui.QWidget):  # defines the window class (main window)
         (QTreeWidgetItem.parent() or root).removeChild(QTreeWidgetItem)
         self.child_removed = True
 
-@QtCore.pyqtSlot()
-def raise_w(new_window, old_window):
-    """ raise the current window"""
-    new_window.raise_()
-    new_window.show()
-    time.sleep(0.1)
-    old_window.hide()
-
-
-class Communicate(QtCore.QObject):
-    '''A custom pyqtsignal so that errors and popups can be called from the threads
-    to the main window'''
-    myGUI_signal = QtCore.pyqtSignal(str)
-    myGUI_signal_QTreeWidgetItem = QtCore.pyqtSignal(QtGui.QTreeWidgetItem)
-
 
 def ConvertSession(main_window, directory, parameters):
 
-    if 'Choose a Directory!' in directory:
+    if default_filename in directory:
         main_window.LogError.myGUI_signal.emit('NoDir')
 
     """This function will take in a session files and then convert the files associated with this session"""
@@ -649,7 +485,7 @@ def ConvertSession(main_window, directory, parameters):
     session_aborted = False
 
     # remove the appropriate session from the TreeWidget
-    iterator = QtGui.QTreeWidgetItemIterator(main_window.recording_queue)
+    iterator = QtWidgets.QTreeWidgetItemIterator(main_window.recording_queue)
     item_found = False
     # loops through the tree to see if the session is already there
 
@@ -672,21 +508,16 @@ def ConvertSession(main_window, directory, parameters):
 
     for child_index, basename in enumerate(tint_basenames):
 
-        # if not item.child(child_index):
-        #    return
-
         if main_window.item.child(0).data(0, 0) == basename:
             main_window.child_set = False
             main_window.SetSessionItem.myGUI_signal.emit(str(0))
             while not main_window.child_set:
                 time.sleep(0.1)
 
-            # new_item = main_window.item.takeChild(0)
-
             for child_count in range(main_window.child_session.childCount()):
                 set_fname = main_window.child_session.child(child_count).data(0, 0)
 
-        set_filename = os.path.join(main_window.directory, directory, set_fname)
+        set_filename = os.path.join(main_window.directory_edit.text(), directory, set_fname)
         converted = convert_basename(main_window, set_filename)
 
         main_window.child_taken = False
@@ -696,7 +527,6 @@ def ConvertSession(main_window, directory, parameters):
         main_window.child_session = None
 
         if main_window.item.childCount() == 0:
-            # main_window.recording_queue.takeTopLevelItem(item_count)
             main_window.top_level_taken = False
             main_window.RemoveQueueItem.myGUI_signal.emit(str(item_count))
             while not main_window.top_level_taken:
@@ -714,16 +544,41 @@ def ConvertSession(main_window, directory, parameters):
 
     if main_window.batch_tint_checkbox.isChecked():
         # if batch-tint is checked, don't move to converted, just convert run batchtint here
-        # main_window.settings_fname = parameters['tintsettings']
-        batchtint(main_window, main_window.directory, directory)
+
+        # import the settings values
+        with open(main_window.batch_tint_settings_window.settings_fname, 'r') as f:
+            settings = json.load(f)
+
+        smtp_settings = {}
+        smtp_settings['Notification'] = 0  # 1 for send e-mails, 0 for don't send
+
+        '''
+        # if you have the notifications set to 0 you don't have to worry about this.
+        # we will need an e-mail to send these experimenter's e-mails from
+        smtp_settings['Username'] = 'example@gmail.com'
+        smtp_settings['Password'] = 'password'  # associated password
+        smtp_settings['ServerName'] = 'smtp.gmail.com'  # the smtp server name, 'smtp.gmail.com' for gmail
+        smtp_settings['Port'] = 587  # 587 default for gmail
+        '''
+
+        experimenter_settings = {
+            # 'example': 'example@gmail.com'  # can do [email1@.., email2@..] if you want it sent to more than 1
+        }
+
+        analyzed_set_files = klusta([set_filename], settings,
+                                    smtp_settings=smtp_settings,
+                                    experimenter_settings=experimenter_settings,
+                                    append=None, self=main_window)
+
+        x = 1
 
     else:
         # move to the converted file
-        convert_fpath = os.path.join(main_window.directory, 'Converted')
+        convert_fpath = os.path.join(main_window.directory_edit.text(), 'Converted')
         if not os.path.exists(convert_fpath):
             os.mkdir(convert_fpath)
 
-        directory_source = os.path.join(main_window.directory, directory)
+        directory_source = os.path.join(main_window.directory_edit.text(), directory)
         directory_destination = os.path.join(convert_fpath, directory)
 
         if os.path.exists(directory_destination):
@@ -743,7 +598,7 @@ def ConvertSession(main_window, directory, parameters):
 
 
 def run():
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
 
     main_window = Window()  # calling the main window
     main_window.raise_()  # making the main window on top

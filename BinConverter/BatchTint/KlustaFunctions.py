@@ -131,8 +131,6 @@ def klusta(self, sub_directory, directory, settings_fname):
 
     processed_directory = os.path.join(directory, 'Processed')
 
-    # send_email(self, experimenter, error, sub_directory, processed_directory)
-
     processing = 1
     while processing == 1:
         time.sleep(2)
@@ -299,9 +297,6 @@ def analyze_tetrode(self, q, experimenter,
 
             cmd.stdin.write(batch)
             cmd.stdin.flush()
-
-            # result = cmd.stdout.read()
-            # print(result.decode())
 
             processing = 1
 
@@ -513,7 +508,7 @@ def check_analyzeable(self, sub_directory_fullpath, set_file, tet_list):
         analyzeable = False
 
         # if eeg not in the f_list move the files to the missing associated file folder
-    if not set([set_file + '.eeg', set_file + '.pos']).issubset(f_list) :
+    if not set([set_file + '.eeg', set_file + '.pos']).issubset(f_list):
 
         self.LogAppend.myGUI_signal.emit(
             '[%s %s]: There is no %s or %s file in this folder, skipping analysis!' % (
@@ -572,92 +567,6 @@ def check_analyzeable(self, sub_directory_fullpath, set_file, tet_list):
             os.rename(os.path.join(sub_directory_fullpath, file), os.path.join(missing_dir, file))
 
     return analyzeable, error
-
-
-def send_email(self, experimenter, error, sub_directory, processed_directory):
-
-    smtpfile = os.path.join(self.SETTINGS_DIR, 'smtp.json')
-    with open(smtpfile, 'r+') as filename:
-        smtp_data = json.load(filename)
-
-        if smtp_data['Notification'] == 'On':
-
-            expter_fname = os.path.join(self.SETTINGS_DIR, 'experimenter.json')
-            with open(expter_fname, 'r+') as f:
-                expters = json.load(f)
-
-            toaddrs = []
-            for key, value in expters.items():
-                if str(key).lower() in str(experimenter).lower():
-                    if ',' in value and ', ' not in value:
-                        addresses = value.split(', ', 1)
-                        for address in addresses:
-                            toaddrs.append(address)
-                    elif ', ' in value:
-                        addresses = value.split(', ', 1)
-                        for address in addresses:
-                            toaddrs.append(address)
-                    else:
-                        addresses = [value]
-                        for address in addresses:
-                            toaddrs.append(address)
-
-            username = smtp_data['Username']
-            password = smtp_data['Password']
-
-            fromaddr = username
-
-            if not error:
-                error = ['\tNo errors to report on the processing of this folder!\n\n']
-
-            subject = str(sub_directory) + ' folder processed! [Automated Message]'
-
-            text_list = ['Greetings from the Batch-TINTV3 automated messaging system!\n\n',
-                         'The "' + sub_directory + '" directory has finished processing and is now located in the "' +
-                         processed_directory + '" folder.\n\n',
-                         'The errors that occurred during processing are the following:\n\n']
-
-            for i in range(len(error)):
-                text_list.append(error[i])
-
-
-            text_list.append('\nHave a nice day,\n')
-            text_list.append('Batch-TINTV2\n\n')
-            text = ''.join(text_list)
-
-            # Prepare actual message
-            message = """\From: %s\nTo: %s\nSubject: %s\n\n%s
-                """ % (fromaddr, ", ".join(toaddrs), subject, text)
-
-            try:
-                # server = smtplib.SMTP('smtp.gmail.com:587')
-                server = smtplib.SMTP(str(smtp_data['ServerName']) + ':' + str(smtp_data['Port']))
-                server.ehlo()
-                server.starttls()
-                server.login(username, password)
-                server.sendmail(fromaddr, toaddrs, message)
-                server.close()
-
-                self.LogAppend.myGUI_signal.emit(
-                    '[%s %s]: Successfully sent e-mail to: %s!' % (
-                        str(datetime.datetime.now().date()),
-                        str(datetime.datetime.now().time())[
-                        :8], experimenter))
-            except:
-                if not toaddrs:
-
-                    self.LogAppend.myGUI_signal.emit(
-                        '[%s %s]: Failed to send e-mail, could not establish an address to send the e-mail to!' % (
-                            str(datetime.datetime.now().date()),
-                            str(datetime.datetime.now().time())[
-                            :8]))
-
-                else:
-                    self.LogAppend.myGUI_signal.emit(
-                        '[%s %s]: Failed to send e-mail, could be due to security settings of your e-mail!' % (
-                            str(datetime.datetime.now().date()),
-                            str(datetime.datetime.now().time())[
-                            :8]))
 
 
 def batchtint(main_window, directory, subdirectory):

@@ -1,8 +1,6 @@
 from scipy import signal, fftpack
-import peakutils, datetime
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
-# from numba import jit
 
 
 def notch_filt(data, Fs, band=10, freq=60, ripple=1, order=2, filter_type='butter', analog_filt=False,
@@ -40,6 +38,8 @@ def notch_filt(data, Fs, band=10, freq=60, ripple=1, order=2, filter_type='butte
             filtered_data = signal.filtfilt(b, a, data)
 
     FType = ''
+
+    '''
     if showresponse == 1:
         if filter_type == 'butter':
             FType = 'Butterworth'
@@ -78,7 +78,7 @@ def notch_filt(data, Fs, band=10, freq=60, ripple=1, order=2, filter_type='butte
         plt.margins(0, 0.1)
         plt.grid(which='both', axis='both')
         plt.axvline(cutoff, color='green')
-
+    '''
     return filtered_data
 
 
@@ -184,8 +184,9 @@ def iirfilt(bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=
             filtered_data = signal.filtfilt(b, a, data, axis=1)
         else:
             filtered_data = signal.filtfilt(b, a, data)
-
+    '''
     if showresponse == 1:  # set to 1 if you want to visualize the frequency response of the filter
+        
         if filttype == 'butter':
             FType = 'Butterworth'
         elif filttype == 'cheby1':
@@ -233,6 +234,8 @@ def iirfilt(bandtype, data, Fs, Wp, Ws=[], order=3, analog_val=False, automatic=
             plt.axvline(cutoff2, color='green')
             # plt.plot(cutoff, 0.5*np.sqrt(2), 'ko') # cutoff frequency
         plt.show()
+    '''
+
     if len(data) != 0:
         return filtered_data
 
@@ -259,42 +262,43 @@ def custom_cheby1(data, Fs, N, Rp, Wp, Ws=None, filtresponse='bandpass', analog_
             # filtered_data = signal.lfilter(b, a, data)
             filtered_data = signal.filtfilt(b, a, data)
 
+    '''
     if showresponse == 1:
-        if showresponse == 1:  # set to 1 if you want to visualize the frequency response of the filter
-            FType = 'Chebyshev I'
-            mode = 'Digital'
+        FType = 'Chebyshev I'
+        mode = 'Digital'
 
-            w, h = signal.freqz(b, a, worN=8000)  # returns the requency response h, and the normalized angular
-            # frequencies w in radians/sample
-            # w (radians/sample) * Fs (samples/sec) * (1 cycle/2pi*radians) = Hz
-            f = Fs * w / (2 * np.pi)  # Hz
+        w, h = signal.freqz(b, a, worN=8000)  # returns the requency response h, and the normalized angular
+        # frequencies w in radians/sample
+        # w (radians/sample) * Fs (samples/sec) * (1 cycle/2pi*radians) = Hz
+        f = Fs * w / (2 * np.pi)  # Hz
 
-            plt.figure(figsize=(10, 5))
-            # plt.subplot(211)
-            plt.semilogx(f, np.abs(h), 'b')
-            plt.xscale('log')
+        plt.figure(figsize=(10, 5))
+        # plt.subplot(211)
+        plt.semilogx(f, np.abs(h), 'b')
+        plt.xscale('log')
 
-            if Ws is not None:
-                plt.title('%s Bandpass Filter Frequency Response (Order = %s, Wp=%s (Hz), Ws =%s (Hz))'
-                          % (FType, N, Wp, Ws))
-            else:
-                plt.title('%s Lowpass Filter Frequency Response (Order = %s, Wp=%s (Hz))'
-                          % (FType, N, Wp))
+        if Ws is not None:
+            plt.title('%s Bandpass Filter Frequency Response (Order = %s, Wp=%s (Hz), Ws =%s (Hz))'
+                      % (FType, N, Wp, Ws))
+        else:
+            plt.title('%s Lowpass Filter Frequency Response (Order = %s, Wp=%s (Hz))'
+                      % (FType, N, Wp))
 
-            plt.xlabel('Frequency(Hz)')
-            plt.ylabel('Gain [V/V]')
-            plt.margins(0, 0.1)
-            plt.grid(which='both', axis='both')
-            plt.axvline(Wp, color='green')
-            if Ws is not None:
-                plt.axvline(Ws, color='green')
-                # plt.plot(Ws, 0.5*np.sqrt(2), 'ko') # cutoff frequency
-            plt.show()
+        plt.xlabel('Frequency(Hz)')
+        plt.ylabel('Gain [V/V]')
+        plt.margins(0, 0.1)
+        plt.grid(which='both', axis='both')
+        plt.axvline(Wp, color='green')
+        if Ws is not None:
+            plt.axvline(Ws, color='green')
+            # plt.plot(Ws, 0.5*np.sqrt(2), 'ko') # cutoff frequency
+        plt.show()
+    '''
 
     return filtered_data
 
 
-def dcblock(data, fc, fs=None, analog_val=False, showresponse=0):
+def dcblock(data, fc, fs=None, analog_val=False, showresponse=0, self=None):
 
     """This method will return the filter coefficients for a DC Blocker Filter"""
 
@@ -319,16 +323,17 @@ def dcblock(data, fc, fs=None, analog_val=False, showresponse=0):
         else:
             # filtered_data = signal.lfilter(b, a, data)
             filtered_data = signal.filtfilt(b, a, data)
-
+    '''
     if showresponse == 1:  # set to 1 if you want to visualize the frequency response of the filter
-        self.PlotResponse(a, b, fc, fs, analog_val)
-
+        if self is not None:
+            self.PlotResponse(a, b, fc, fs, analog_val)
+    '''
     if len(data) != 0:
         return filtered_data
 
 
+'''
 def PlotResponse(a, b, fc, fs, analog_val):
-
     if analog_val:
         mode = 'Analog'
     else:
@@ -364,9 +369,10 @@ def PlotResponse(a, b, fc, fs, analog_val):
     plt.show()
 
 
+
 def fft_plot(Fs, Y):
-    '''Takes the Sample Frequency: Fs(Hz), the numer of samples, N, and the data values (Y),
-    and performs a Fast Fourier Transformation to observe the signal in the frequency domain'''
+    """Takes the Sample Frequency: Fs(Hz), the numer of samples, N, and the data values (Y),
+    and performs a Fast Fourier Transformation to observe the signal in the frequency domain"""
 
     N = len(Y)
     k = np.arange(N)
@@ -387,7 +393,7 @@ def fft_plot(Fs, Y):
     ax.grid()
 
     return fig, ax
-
+'''
 
 def FastFourier(Fs, Y):
     '''Takes the Sample Frequency: Fs(Hz), the numer of samples, N, and the data values (Y),
