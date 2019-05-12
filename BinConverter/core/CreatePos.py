@@ -1,6 +1,6 @@
 import os
-from core.conversion_utils import get_set_header
-from core.Tint_Matlab import get_setfile_parameter
+from .conversion_utils import get_set_header
+from .Tint_Matlab import get_setfile_parameter
 import struct
 
 

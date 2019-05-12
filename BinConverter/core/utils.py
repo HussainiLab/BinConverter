@@ -10,6 +10,7 @@ Small_Font = ("Arial", 8)
 
 project_name = 'BinConverter'
 
+
 @QtCore.pyqtSlot()
 def raise_w(new_window, old_window):
     """ raise the current window"""
