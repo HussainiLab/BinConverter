@@ -409,6 +409,10 @@ def arena_config(posx, posy, arena, conversion='', center='', flip_y=True):
     if 'BehaviorRoom' in arena:
         center = np.array([314.75, 390.5])
         conversion = 495.5234
+    elif 'BehaviorRoom2' in arena:
+        # added december 12th, 2018
+        center = np.array([314.75, 390.5])
+        conversion = 485.1185
     elif 'DarkRoom' in arena:
         center = np.array([346.5, 273.5])
         conversion = 711.3701
