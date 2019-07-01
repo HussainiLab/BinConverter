@@ -377,6 +377,23 @@ def find_unit(tetrode_list):
     return cut_list
 
 
+def read_clu(filename):
+    """
+    This will read in the .clu.N files that are provided by Tint. The .clu cell ID's go from 1 -> N
+    instead of the traditional 0->N-1 for a .cut file. We will convert from the 1->N format to the
+    0->N-1 format.
+    """
+
+    data = np.loadtxt(filename)
+
+    # the first number in the file is simply the number of cells that were recorded, we must remove this
+
+    # we will also subtract 1 to ensure that the data goes from 0->N-1 instead of 1->N. Essentially converting
+    # from the clu format to the .cut format.
+
+    return data[1:].flatten() - 1
+
+
 def read_cut(cut_filename):
     """This function will read the given cut file, and output the """
     cut_values = None
