@@ -72,6 +72,9 @@ def background(self):  # defines the background for each window
     self.IMG_DIR = os.path.join(self.PROJECT_DIR, 'img')  # image directory
     self.CORE_DIR = os.path.join(self.PROJECT_DIR, 'core')  # core directory
     self.SETTINGS_DIR = os.path.join(self.PROJECT_DIR, 'settings')  # settings directory
+    if not os.path.exists(self.SETTINGS_DIR):
+        os.mkdir(self.SETTINGS_DIR)
+
     self.BATCH_TINT_DIR = os.path.join(self.PROJECT_DIR, 'BatchTint')
     self.setWindowIcon(QtGui.QIcon(os.path.join(self.IMG_DIR, 'GEBA_Logo.png')))  # declaring the icon image
     self.deskW, self.deskH = QtWidgets.QDesktopWidget().availableGeometry().getRect()[2:]  # gets the window resolution

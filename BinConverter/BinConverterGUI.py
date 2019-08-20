@@ -98,7 +98,7 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
             btn_layout.addWidget(button)
 
         # Version information -------------------------------------------
-        vers_label = QtWidgets.QLabel("%s V1.0.1" % (project_name, ))
+        vers_label = QtWidgets.QLabel("%s V1.0.2" % (project_name, ))
 
         # ------------------ widget layouts ----------------
         self.choose_directory_btn = QtWidgets.QPushButton('Choose Directory', self)
