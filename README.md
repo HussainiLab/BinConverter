@@ -10,7 +10,7 @@ The dependencies are written in the [requirements.txt](requirements.txt) file, h
 4) PeakUtils
 5) Matplotlib
 
-*Note: it has been tested on Windows, and should be compatible on other OS’, however they have not been tested*
+*Note: it has been tested on Windows, and should be compatible on other OS?, however they have not been tested*
 
 ### Installing
 After you have finished installing the 
@@ -20,10 +20,10 @@ git clone https://github.com/ephyslab/BinConverter.git
 ```
 2) Use desired method to execute BinConverterGUI.py, if you want to execute it from the command prompt use the following command:
 ```
-python “path/to/BinConverterGUI.py”
+python ?path/to/BinConverterGUI.py?
 ```
 ## Authors
-* **Geoff Barrett** - [Geoff’s GitHub](https://github.com/GeoffBarrett)
+* **Geoff Barrett** - [Geoff?s GitHub](https://github.com/GeoffBarrett)
 
 ## License
 
