@@ -528,9 +528,7 @@ def ConvertSession(directory, parameters, self=None):
             self.SetSessionItem.myGUI_signal.emit(str(0))
             while not self.child_set:
                 time.sleep(0.1)
-
-            for child_count in range(self.child_session.childCount()):
-                set_fname = self.child_session.child(child_count).data(0, 0)
+            set_fname = basename
 
         set_filename = os.path.join(self.directory_edit.text(), directory, set_fname)
         converted = convert_basename(self, set_filename)
