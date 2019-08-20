@@ -97,13 +97,8 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         for button in button_order:
             btn_layout.addWidget(button)
 
-        try:
-            mod_date = time.ctime(os.path.getmtime(__file__))
-        except:
-            mod_date = time.ctime(os.path.getmtime(os.path.join(self.PROJECT_DIR, "BinConverterGUI.exe")))
-
         # Version information -------------------------------------------
-        vers_label = QtWidgets.QLabel("%s - Last Updated: %s" % (project_name, mod_date))
+        vers_label = QtWidgets.QLabel("%s V1.0.1" % (project_name, ))
 
         # ------------------ widget layouts ----------------
         self.choose_directory_btn = QtWidgets.QPushButton('Choose Directory', self)
