@@ -616,6 +616,8 @@ def ConvertSession(directory, parameters, self=None):
         with open(self.batch_tint_settings_window.settings_fname, 'r') as f:
             settings = json.load(f)
 
+        settings['move_processed'] = 0  # we will override the move_processed functionality here.
+
         smtp_settings = {}
         smtp_settings['Notification'] = 0  # 1 for send e-mails, 0 for don't send
 
@@ -636,8 +638,6 @@ def ConvertSession(directory, parameters, self=None):
                                     smtp_settings=smtp_settings,
                                     experimenter_settings=experimenter_settings,
                                     append=None, self=self)
-
-        x = 1
 
     else:
         # move to the converted file
