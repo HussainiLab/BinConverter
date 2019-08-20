@@ -78,6 +78,9 @@ def background(self):  # defines the background for each window
     # self.setWindowState(QtCore.Qt.WindowMaximized) # will maximize the GUI
     self.setGeometry(0, 0, self.deskW/2, self.deskH/1.75)
 
+    self.settings_fname = os.path.join(self.SETTINGS_DIR, 'settings.json')
+    self.directory_settings = os.path.join(self.SETTINGS_DIR, 'directory.json')
+
     QtWidgets.QApplication.setStyle(QtWidgets.QStyleFactory.create('Cleanlooks'))
 
 

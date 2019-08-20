@@ -9,7 +9,7 @@ from .ConvertTetrode import write_tetrode
 from .CreateEEG import create_eeg, create_egf
 
 
-def convert_basename(self, set_filename):
+def convert_basename(self, set_filename, threshold):
     """This function will convert the .bin file to the TINT format"""
 
     directory = os.path.dirname(set_filename)
@@ -149,7 +149,7 @@ def convert_basename(self, set_filename):
 
                 Thr = 4*sigma, sigma = median(abs(x)/0.6745)
                 '''
-                standard_deviations = float(self.threshold.text())
+                standard_deviations = float(threshold)
 
                 sigma_n = np.median(np.divide(np.abs(data[channel_index, :]), 0.6745))
                 # threshold = sigma_n / channel_max

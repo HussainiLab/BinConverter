@@ -4,7 +4,7 @@ from core.ConversionFunctions import convert_basename
 from distutils.dir_util import copy_tree
 from BatchTINTV3.core.settings import Settings_Window
 from BatchTINTV3.core.klusta_functions import klusta
-from core.defaultParameters import default_batchtint, default_filename
+from core.defaultParameters import default_batchtint, default_filename, default_move_converted, default_threshold
 from core.utils import background, Worker, center, Communicate, project_name, raise_w
 from core.AddSessions import RepeatAddSessions
 import json
@@ -28,12 +28,16 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         self.conversion = False
         self.choice = None
         self.file_chosen = False
+
+        # this signal will append errors/messages to the Log object
         self.LogAppend = Communicate()
         self.LogAppend.myGUI_signal.connect(self.AppendLog)
 
+        # this signal will raise any errors
         self.LogError = Communicate()
         self.LogError.myGUI_signal.connect(self.raiseError)
 
+        # this will remove the top level item from the queue
         self.RemoveQueueItem = Communicate()
         self.RemoveQueueItem.myGUI_signal.connect(self.takeTopLevel)
 
@@ -55,6 +59,22 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         self.home()  # runs the home function
 
     def home(self):  # defines the home function (the main window)
+
+        # read any previous directories chosen so we don't have to
+        try:  # attempts to open previous directory catches error if file not found
+            # No saved directory's need to create file
+            with open(self.directory_settings, 'r+') as filename:  # opens the defined file
+                directory_data = json.load(filename)  # loads the directory data from file
+                if os.path.exists(directory_data['directory']):
+                    current_directory_name = directory_data['directory']  # defines the data
+                else:
+                    current_directory_name = default_filename  # states that no directory was chosen
+
+        except FileNotFoundError:  # runs if file not found
+            with open(self.directory_settings, 'w') as filename:  # opens a file
+                current_directory_name = default_filename  # states that no directory was chosen
+                directory_data = {'directory': current_directory_name}  # creates a dictionary
+                json.dump(directory_data, filename)  # writes the dictionary to the file
 
         # ------ buttons + widgets -----------------------------
 
@@ -96,18 +116,22 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         # the line-edit that displays the current directory
         self.directory_edit = QtWidgets.QLineEdit()
         self.directory_edit.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)  # aligning the text
-        self.directory_edit.setText(default_filename)  # default text
+        self.directory_edit.setText(current_directory_name)  # default text
         # updates the directory every time the text changes
         self.directory_edit.textChanged.connect(self.changed_directory)
 
         self.batch_tint_checkbox = QtWidgets.QCheckBox("Batch Tint")
         self.batch_tint_checkbox.toggle()
 
+        self.move_converted_checkbox = QtWidgets.QCheckBox("Move Converted")
+        self.move_converted_checkbox.toggle()
+
         # creating the layout for the text + line-edit so that they are aligned appropriately
         current_directory_layout = QtWidgets.QHBoxLayout()
         current_directory_layout.addWidget(directory_label)
         current_directory_layout.addWidget(self.directory_edit)
         current_directory_layout.addWidget(self.batch_tint_checkbox)
+        current_directory_layout.addWidget(self.move_converted_checkbox)
 
         # creating a layout with the line-edit/text + the button so that they are all together
         directory_layout = QtWidgets.QHBoxLayout()
@@ -137,7 +161,7 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         threshold_label = QtWidgets.QLabel('Threshold(SD\'s)')
         self.threshold = QtWidgets.QLineEdit()
         self.threshold.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)
-        self.threshold.setText('3')
+        self.threshold.setText(str(default_threshold))
         self.threshold.setToolTip("This will determine the standard deviations away from the baseline value " +
                                   "that you want to use for the thresholding")
 
@@ -176,22 +200,70 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         layout.addStretch(1)  # adds stretch to put the version info at the button
         layout.addWidget(vers_label)  # adds the date modification/version number
 
-        self.set_parameters('Default')
+        self.setSettings()
 
         self.setLayout(layout)
 
         center(self)
 
-        self.show()
-
         self.set_batch_tint_settings()
 
-        # start thread that will search for new files to convert
+        self.show()
 
+        # start thread that will search for new files to convert
         self.RepeatAddSessionsThread.start()
         self.RepeatAddSessionsWorker = Worker(RepeatAddSessions, self)
         self.RepeatAddSessionsWorker.moveToThread(self.RepeatAddSessionsThread)
         self.RepeatAddSessionsWorker.start.emit("start")
+
+    def setCheckbox(self, widget, value):
+
+        if widget.isChecked() and not value:
+            # if the checkbox is checked and it isn't supposed to be, untoggle
+            widget.toggle()
+        elif not widget.isChecked and value:
+            # if checkbox isn't checked, and it's supposed to be, toggle
+            widget.toggle()
+
+    def setValues(self, settings):
+        self.setCheckbox(self.batch_tint_checkbox, settings['batchtint'])
+        self.setCheckbox(self.move_converted_checkbox, settings['move_converted'])
+        self.threshold.setText(str(settings['threshold']))
+
+    def setSettings(self):
+        try:
+            with open(self.settings_fname, 'r+') as filename:
+                settings = json.load(filename)
+        except FileNotFoundError:
+            self.setDefaultSettings()
+            with open(self.settings_fname, 'r+') as filename:
+                settings = json.load(filename)
+
+        try:
+            self.setValues(settings)
+        except KeyError:
+            # re-create settings file, likely you have an outdated version
+            self.setDefaultSettings()
+            self.setValues(settings)
+
+    def setDefaultSettings(self):
+        settings = {}
+
+        settings['batchtint'] = default_batchtint
+        settings['move_converted'] = default_move_converted
+        settings['threshold'] = default_threshold
+
+        with open(self.settings_fname, 'w') as filename:
+            json.dump(settings, filename)
+
+    def getSettings(self):
+        settings = {}
+
+        settings['batchtint'] = self.batch_tint_checkbox.isChecked()
+        settings['move_converted'] = self.move_converted_checkbox.isChecked()
+        settings['threshold'] = self.threshold.text()
+
+        return settings
 
     def restart_add_sessions_thread(self):
 
@@ -327,7 +399,6 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         self.choice = None
         # self.current_session = None
         self.current_subdirectory = None
-        self.parameters = self.get_paramters()
 
         self.convert_button.setText('Stop Conversion')
         self.convert_button.setToolTip('Click to stop the conversion.')  # defining the tool tip for the start button
@@ -371,7 +442,17 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
                     continue
 
             self.current_subdirectory = sessionpath
-            ConvertSession(self.session_item.data(0, 0), self.parameters, self)
+
+            # overwrite the settings file so it saves these settings for next time
+            self.settings = self.getSettings()
+            with open(self.settings_fname, 'w') as f:
+                json.dump(self.settings, f)
+
+            # overwrite the directory name
+            with open(self.directory_settings, 'w') as f:
+                json.dump({'directory': self.directory_edit.text()}, f)
+
+            ConvertSession(self.session_item.data(0, 0), self.settings, self)
 
     def StopConversion(self):
         self.convert_button.setText('Convert')
@@ -431,38 +512,6 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
 
         self.directory_chosen = True
 
-    def set_parameters(self, mode):
-
-        if 'default' in mode.lower():
-
-            default_settings = {'Batch-Tint': default_batchtint}
-
-            for key, value in default_settings.items():
-
-                if 'Batch-Tint' in key:
-                    if value == 1:
-                        # automatically check
-                        if not self.batch_tint_checkbox.isChecked():
-                            self.batch_tint_checkbox.toggle()
-                    else:
-                        # automatically uncheck
-                        if self.batch_tint_checkbox.isChecked():
-                            self.batch_tint_checkbox.toggle()
-
-        elif 'previous' in mode.lower():
-            pass
-
-    def get_paramters(self):
-
-        parameters = {}
-
-        if self.batch_tint_checkbox.isChecked():
-            parameters['batchtint'] = True
-        else:
-            parameters['batchtint'] = False
-
-        return parameters
-
     def takeTopLevel(self, item_count):
         item_count = int(item_count)
         self.recording_queue.takeTopLevelItem(item_count)
@@ -494,13 +543,13 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         self.child_removed = True
 
 
-def ConvertSession(directory, parameters, self=None):
+def ConvertSession(directory, bin_settings, self=None):
     """
     This function will be run on all the QTreeWidgetItems which contain the directory and session names for files that
     we want converted.
 
     :param directory: string, containing the name of the directory that is currently being analyzed
-    :param parameters: currently unused parameter, likely can remove.
+    :param bin_settings: contains settings, such as if the user wants to batchtint their data, or not.
     :param self: object, reference to the class's self.
     :return:
     """
@@ -572,7 +621,7 @@ def ConvertSession(directory, parameters, self=None):
 
         # convert the corresponding .bin file of the obtained .set file, if any errors have occurred the returned
         # converted value should be an 'Aborted' string value.
-        converted = convert_basename(self, set_filename)
+        converted = convert_basename(self, set_filename, bin_settings['threshold'])
 
         # remove the session's QTreeWidgetItem since we have analyzed it already
         self.child_taken = False  # initialize the child taken value
@@ -609,7 +658,7 @@ def ConvertSession(directory, parameters, self=None):
         return
 
     # determine if the user wants to sort the newly converted data
-    if self.batch_tint_checkbox.isChecked():
+    if bin_settings['batchtint']:
         # if batch-tint is checked, don't move to converted, just convert run BatchTINTV3 here
 
         # import the settings values
@@ -639,7 +688,10 @@ def ConvertSession(directory, parameters, self=None):
                                     experimenter_settings=experimenter_settings,
                                     append=None, self=self)
 
-    else:
+    # move the files to a Converted folder if the user wants to
+    if bin_settings['move_converted']:
+        # if the user wants to move the converted files.
+
         # move to the converted file
         convert_fpath = os.path.join(self.directory_edit.text(), 'Converted')
         if not os.path.exists(convert_fpath):
