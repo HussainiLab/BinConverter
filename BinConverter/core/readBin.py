@@ -11,7 +11,7 @@ def get_active_tetrode(set_filename):
     active_tetrode = []
     active_tetrode_str = 'collectMask_'
 
-    with open(set_filename) as f:
+    with open(set_filename, encoding='cp1252') as f:
         for line in f:
 
             # collectMask_X Y, where x is the tetrode number, and Y is eitehr on or off (1 or 0)
@@ -38,7 +38,7 @@ def get_active_eeg(set_filename):
 
     active_eeg_dict = {}
 
-    with open(set_filename) as f:
+    with open(set_filename, encoding='cp1252') as f:
         for line in f:
 
             if active_eeg_str in line:

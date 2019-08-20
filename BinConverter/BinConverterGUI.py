@@ -98,7 +98,7 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
             btn_layout.addWidget(button)
 
         # Version information -------------------------------------------
-        vers_label = QtWidgets.QLabel("%s V1.0.2" % (project_name, ))
+        vers_label = QtWidgets.QLabel("%s V1.0.3" % (project_name, ))
 
         # ------------------ widget layouts ----------------
         self.choose_directory_btn = QtWidgets.QPushButton('Choose Directory', self)
@@ -704,11 +704,17 @@ def ConvertSession(directory, bin_settings, self=None):
                 shutil.rmtree(directory_source)
             except PermissionError:
                 self.LogAppend.myGUI_signal.emit(
-                    '[%s %s]: The following directory could not be deleted, close files and then delete the directory.' %
+                    '[%s %s]: The current directory could not be deleted, close files and then delete the directory!#red' %
                     (str(datetime.datetime.now().date()),
                      str(datetime.datetime.now().time())[:8]))
         else:
             shutil.move(directory_source, convert_fpath)
+
+    # finished converting
+    self.LogAppend.myGUI_signal.emit(
+        '[%s %s]: The following directory has finished converting: %s!' %
+        (str(datetime.datetime.now().date()),
+         str(datetime.datetime.now().time())[:8], self.directory_edit.text()))
 
 
 def run():
