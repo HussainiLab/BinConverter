@@ -559,6 +559,7 @@ def ConvertSession(directory, parameters, self=None):
             # the self.child_set value will be set to True once the child has been set
             while not self.child_set:
                 time.sleep(0.1)
+
         else:
             # considering the order through which these tint_basename values are set
             # we should not have to worry about the above if statement being false.

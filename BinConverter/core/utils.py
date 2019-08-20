@@ -36,6 +36,7 @@ class Communicate(QtCore.QObject):
     '''A custom pyqtsignal so that errors and popups can be called from the threads
     to the main window'''
     myGUI_signal = QtCore.pyqtSignal(str)
+    myGUI_signal_str = myGUI_signal
     myGUI_signal_QTreeWidgetItem = QtCore.pyqtSignal(QtWidgets.QTreeWidgetItem)
 
 
