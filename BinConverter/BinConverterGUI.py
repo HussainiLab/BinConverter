@@ -389,8 +389,10 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         self.conversion = False
 
     def new_directory(self):
-        '''A function that will be used from the Choose Set popup window that will
-        produce a popup so the user can pick a filename for the .set file'''
+        """
+        A function that will be used from the Choose Set popup window that will
+        produce a popup so the user can pick a filename for the .set file
+        """
         # prompt user to pick a .set file
 
         current_directory_name = QtWidgets.QFileDialog.getExistingDirectory(self, "Select a Directory!")
@@ -403,10 +405,11 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         self.directory_edit.setText(current_directory_name)
 
     def new_file(self):
-        '''
+        """
         this method is no longer necessary, decided to have
         the user choose the settings directory instead of the file
-        '''
+        """
+
         cur_file_name, file_ext = QtWidgets.QFileDialog.getOpenFileName(self, "Select your Batch-Tint Settings File!", '',
                                               'Settings Files (*settings.json)')
 
@@ -466,6 +469,13 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         self.top_level_taken = True
 
     def setChild(self, child_count):
+        """
+        this method will set the self.child_session value to a provided child number of the
+        self.session_item item.
+
+        :param child_count:
+        :return:
+        """
         self.child_session = self.session_item.child(int(child_count)).clone()
         self.child_set = True
 
@@ -485,7 +495,15 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
 
 
 def ConvertSession(directory, parameters, self=None):
+    """
+    This function will be run on all the QTreeWidgetItems which contain the directory and session names for files that
+    we want converted.
 
+    :param directory: string, containing the name of the directory that is currently being analyzed
+    :param parameters: currently unused parameter, likely can remove.
+    :param self: object, reference to the class's self.
+    :return:
+    """
     if default_filename in directory:
         if self is None:
             self.LogError.myGUI_signal.emit('NoDir')
@@ -506,47 +524,76 @@ def ConvertSession(directory, parameters, self=None):
     # loops through the tree to see if the session is already there
 
     while iterator.value() and not item_found:
+
+        # find the next file in the list via the iterator, in this case this will represent the directory
         self.item = iterator.value()
 
+        # find all sessions within the directory that we will need to analyze
+
         if self.item.data(0, 0) == directory:
+            # iterate through each item in the queue to find the appropriate directory to analyze. We will also find
+            # the item_count which will help us later remove this directory once we have finalized the conversion.
             for item_count in range(self.recording_queue.topLevelItemCount()):
                 if self.item == self.recording_queue.topLevelItem(item_count):
-                    item_found = True
+                    # these items match, therefore
+                    item_found = True  # this will insure that we break the parented while loop early.
 
-                    # adding the .set files to a list of session_files
+                    # initialize the tint_basenames list which will contain session basenames to analyze
                     tint_basenames = []
+                    # adding the .set files to a list of session_files
                     for child_count in range(self.item.childCount()):
                         tint_basenames.append(self.item.child(child_count).data(0, 0))
                     break
         else:
             iterator += 1
 
+    # iterate through each of the basenames within the directory
     for child_index, basename in enumerate(tint_basenames):
 
         if self.item.child(0).data(0, 0) == basename:
-            self.child_set = False
+            self.child_set = False  # setting the child_set value to false
+
+            # set the self.child_session value
             self.SetSessionItem.myGUI_signal.emit(str(0))
+
+            # the self.child_set value will be set to True once the child has been set
             while not self.child_set:
                 time.sleep(0.1)
+        else:
+            # considering the order through which these tint_basename values are set
+            # we should not have to worry about the above if statement being false.
+            # theoretically we should be performing a for loop of all the children
+            # within this item and finding the item that matches.
+            pass
 
-            for child_count in range(self.child_session.childCount()):
-                set_fname = self.child_session.child(child_count).data(0, 0)
+        # obtaining the corresponding .set filename
+        set_filename = os.path.join(self.directory_edit.text(), directory, basename)
 
-        set_filename = os.path.join(self.directory_edit.text(), directory, set_fname)
+        # convert the corresponding .bin file of the obtained .set file, if any errors have occurred the returned
+        # converted value should be an 'Aborted' string value.
         converted = convert_basename(self, set_filename)
 
-        self.child_taken = False
-        self.RemoveSessionItem.myGUI_signal.emit(str(0))
+        # remove the session's QTreeWidgetItem since we have analyzed it already
+        self.child_taken = False  # initialize the child taken value
+        self.RemoveSessionItem.myGUI_signal.emit(str(0))  # remove the child
+
+        # wait for child to be removed
         while not self.child_taken:
             time.sleep(0.1)
+
+        # set the child_session to None since we are done converting the previous session
         self.child_session = None
 
+        # check if there are any child items within the directory, if not then we can remove the directory from
+        # the queue
         if self.item.childCount() == 0:
             self.top_level_taken = False
             self.RemoveQueueItem.myGUI_signal.emit(str(item_count))
+            # wait for directory item to be removed
             while not self.top_level_taken:
                 time.sleep(0.1)
 
+        # check if there were any errors in the conversion
         if isinstance(converted, str):
             # ensures that the aborted session does not go into batchTint or get moved
             if 'Aborted' in converted:
@@ -555,10 +602,14 @@ def ConvertSession(directory, parameters, self=None):
                 # return
 
     if session_aborted:
+        # in the case that a session was aborted we simply finish the conversion process. Maybe in the future we
+        # should just continue on our way and just remove this session from the queue. It is possible that this session
+        # is corrupted.
         return
 
+    # determine if the user wants to sort the newly converted data
     if self.batch_tint_checkbox.isChecked():
-        # if batch-tint is checked, don't move to converted, just convert run batchtint here
+        # if batch-tint is checked, don't move to converted, just convert run BatchTINTV3 here
 
         # import the settings values
         with open(self.batch_tint_settings_window.settings_fname, 'r') as f:
