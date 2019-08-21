@@ -5,8 +5,8 @@ This is a GUI developed to aid those individuals using Axona' LLC's Tint softwar
 
 
 ### Requirements
--Python: This code was written using Python 3.7, however the compatibility really only depends on PyQt5, which requires Python 2.6+. This was written in Python 3 so I suggest getting the latest version of Python2. It will make the installation process easier as PyQt5 used to be a pain to download in the older versions (3.4 for example). If you happen to have problems downloading PyQ5t, you will need to search for a wheel (.whl) file for PyQt5 for your version (of Python and OS).
--Operating System: BinConverter does not technically have any Operating System (OS) requirements. However you have the ability to sort the newly converted data using Tint (KlustaKwik), and Tint does require Windows3. Some Linux users have been starting to use this, so I have been working out any bugs that maybe be caused by Linux. The .set file is encoded in cp1252, which Python does not default to when reading text files.
+- Python: This code was written using Python 3.7, however the compatibility really only depends on PyQt5, which requires Python 2.6+. This was written in Python 3 so I suggest getting the latest version of Python2. It will make the installation process easier as PyQt5 used to be a pain to download in the older versions (3.4 for example). If you happen to have problems downloading PyQ5t, you will need to search for a wheel (.whl) file for PyQt5 for your version (of Python and OS).
+- Operating System: BinConverter does not technically have any Operating System (OS) requirements. However you have the ability to sort the newly converted data using Tint (KlustaKwik), and Tint does require Windows3. Some Linux users have been starting to use this, so I have been working out any bugs that maybe be caused by Linux. The .set file is encoded in cp1252, which Python does not default to when reading text files.
 
 ### Python Dependencies
 - BinConverter
