@@ -2,29 +2,27 @@
 
 This is a GUI developed to aid those individuals using Axona' LLC's Tint software for spike sorting. The GUI will take the raw (.bin) files and convert them to the Tint format (.eeg, .egf, .N, etc) retroactively. This can be done using DacqUSB, however this GUI will allow you to batch convert, as well as it will allow you to retroactively choose a threshold. This is beneficial as depending on the timeframe of your recording, the signal can deviate and the threshold you set in the beginning of the recording might no longer be suitable. As of now the threshold is a multiple (chosen by the user) of the standard deviation of the baseline signal.
 
-### Prerequisites
-The dependencies are written in the [requirements.txt](requirements.txt) file, however some are listed below: 
-1) PyQt4 - This is the framework of the GUI so it and its dependents must be installed, I believe a requirement for this is Python 3.4+
-2) Numpy
-3) SciPy
-4) PeakUtils
-5) Matplotlib
 
-*Note: it has been tested on Windows, and should be compatible on other OS', however they have not been tested*
 
-### Installing
-After you have finished installing the 
-1) Clone the BinConverter repository by executing the following command in whichever directory you want BinConverter to be copied to
-```
-git clone https://github.com/ephyslab/BinConverter.git
-```
-2) Use desired method to execute BinConverterGUI.py, if you want to execute it from the command prompt use the following command:
-```
-python "path/to/BinConverterGUI.py"
-```
+### Requirements
+- Python: This code was written using Python 3.7, however the compatibility really only depends on PyQt5, which requires Python 2.6+. This was written in Python 3 so I suggest getting the latest version of Python2. It will make the installation process easier as PyQt5 used to be a pain to download in the older versions (3.4 for example). If you happen to have problems downloading PyQ5t, you will need to search for a wheel (.whl) file for PyQt5 for your version (of Python and OS).
+- Operating System: BinConverter does not technically have any Operating System (OS) requirements. However you have the ability to sort the newly converted data using Tint (KlustaKwik), and Tint does require Windows3. Some Linux users have been starting to use this, so I have been working out any bugs that maybe be caused by Linux. The .set file is encoded in cp1252, which Python does not default to when reading text files.
+
+### Python Dependencies
+- BinConverter
+- BatchTINTV3
+- NumPy
+- PyQt5
+- PyQt5-sip
+- SciPy
+
+### Project Documentation
+- [Installation](https://geba.technology/project/binconverter)
+- [User Guide](https://geba.technology/project/binconverter-binconverter-user-guide)
+
+
 ## Authors
-* **Geoff Barrett** - [Geoff's GitHub](https://github.com/GeoffBarrett)
+* **Geoff Barrett** - [Geoff’s GitHub](https://github.com/GeoffBarrett)
 
 ## License
-
 This project is licensed under the GNU  General  Public  License - see the [LICENSE.md](LICENSE.md) file for details
