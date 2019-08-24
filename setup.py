@@ -10,7 +10,7 @@ pkg_name = "BinConverter"
 
 setuptools.setup(
     name=pkg_name,
-    version="1.0.3",
+    version="1.0.4",
     author="Geoffrey Barrett",
     author_email="geoffrey.m.barrett@gmail.com",
     description="BinConverter - GUI that will allow the user to convert the raw (.bin) files from Axona's " +

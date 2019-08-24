@@ -8,8 +8,23 @@ from .conversion_utils import has_files, is_converted
 threadLock = threading.Lock()
 
 
+def get_added(queue):
+    added = []
+
+    item_count = queue.topLevelItemCount()
+    for item_index in range(item_count):
+        parent_item = queue.topLevelItem(item_index)
+        parent_directory = parent_item.data(0, 0)
+        for child_i in range(parent_item.childCount()):
+            added.append(os.path.join(parent_directory, parent_item.child(child_i).data(0, 0)))
+
+    return added
+
+
 def addSessions(self):
     """Adds any sessions that are not already on the list"""
+
+    # TODO: Add the removal of a session if you re-check that the file is not longer valid
 
     if self is not None:
         # doesn't add sessions when re-ordering
@@ -73,10 +88,9 @@ def addSessions(self):
                 return
 
             # compile list of added sessions
-            while iterator.value():
-                session_item = iterator.value()
-                added_sessions.append(session_item.data(0, 0))
-                iterator += 1
+
+            added = get_added(self.recording_queue)
+            added_sessions += added
 
             # find sessions to add
             try:
@@ -87,7 +101,7 @@ def addSessions(self):
                 return
 
             for session in sessions:
-                if session not in added_sessions:
+                if os.path.join(directory, session) not in added_sessions:
                     tint_basename = os.path.basename(session)
 
                     # only adds the sessions that haven't been added already

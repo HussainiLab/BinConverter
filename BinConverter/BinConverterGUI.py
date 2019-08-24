@@ -98,7 +98,7 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
             btn_layout.addWidget(button)
 
         # Version information -------------------------------------------
-        vers_label = QtWidgets.QLabel("%s V1.0.3" % (project_name, ))
+        vers_label = QtWidgets.QLabel("%s V1.0.4" % (project_name, ))
 
         # ------------------ widget layouts ----------------
         self.choose_directory_btn = QtWidgets.QPushButton('Choose Directory', self)
@@ -455,7 +455,6 @@ class Window(QtWidgets.QWidget):  # defines the window class (main window)
         self.convert_button.clicked.disconnect()
         self.convert_button.clicked.connect(self.Convert)
 
-        # self.convert_thread.quit()
         self.convert_thread.terminate()
         self.LogAppend.myGUI_signal.emit(
             '[%s %s]: Conversion terminated!' %
