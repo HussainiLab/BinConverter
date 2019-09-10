@@ -123,7 +123,8 @@ def get_setfile_parameter(parameter, set_filename):
 
 
 def getpos(pos_fpath, arena, method='', flip_y=True):
-    '''getpos function:
+    """
+    getpos function:
     ---------------------------------------------
     variables:
     -pos_fpath: the full path (C:\example\session.pos)
@@ -132,7 +133,7 @@ def getpos(pos_fpath, arena, method='', flip_y=True):
     t: column numpy array of the time stamps
     x: a column array of the x-values (in pixels)
     y: a column array of the y-values (in pixels)
-    '''
+    """
 
     with open(pos_fpath, 'rb+') as f:  # opening the .pos file
         headers = ''  # initializing the header string
@@ -186,7 +187,6 @@ def getpos(pos_fpath, arena, method='', flip_y=True):
                 headers += line.decode(encoding='UTF-8')
 
     if two_spot:
-
         '''Run when two spot mode is on, (one_spot has the same format so it will also run here)'''
         with open(pos_fpath, 'rb+') as f:
             '''get_pos for one_spot'''
@@ -446,7 +446,10 @@ def arena_config(posx, posy, arena, conversion='', center='', flip_y=True):
     posx = 100 * (posx - center[0]) / conversion
 
     if flip_y:
+        # flip the y axis
         posy = 100 * (-posy + center[1]) / conversion
+    else:
+        posy = 100 * (posy + center[1]) / conversion
 
     return posx, posy
 
